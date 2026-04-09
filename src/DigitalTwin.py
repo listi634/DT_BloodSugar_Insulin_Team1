@@ -3,13 +3,13 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 
 # --- Parameter des Modells ---
-G_BASAL = 90.0    # Basalwert Blutzucker (mmol/dl)
-I_BASAL = 5.0     # Basalwert Insulin (mU/L)
+G_BASAL = 5.0    # Basalwert Blutzucker (mmol/l)
+I_BASAL = 10.0     # Basalwert Insulin (mU/L)
 DT = 1            # Zeitschritt in Minuten
 MINUTES = 1440    # 24 Stunden
 
 # Dynamik-Konstanten (vereinfacht)
-k_g = 0.02  # Wie schnell Insulin den Zucker senkt
+k_g = 10  # Wie schnell Insulin den Zucker senkt 
 k_i = 0.05  # Wie schnell Insulin abgebaut wird
 k_abs = 0.03 # Wie schnell Nahrung ins Blut geht
 
