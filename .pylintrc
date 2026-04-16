@@ -1,0 +1,113 @@
+# Pylint configuration for DT_BloodSugar_Insulin_Team1
+# Based on Google Python Style Guide
+
+[MASTER]
+# Plugins to load
+load-plugins=pylint.extensions.docparams
+
+# Patterns for which to ignore warnings
+ignore-patterns=test_.*?py
+
+# Minimum Python version
+min-similarity-lines=4
+min-protected-access=2
+unsafe-load-any-extension=False
+
+[MESSAGES CONTROL]
+# Disable specific warnings
+disable=
+    missing-module-docstring,
+    too-few-public-methods,
+    too-many-arguments,
+    too-many-locals,
+    duplicate-code,
+
+# Enable all message categories
+enable=all
+
+[FORMAT]
+# Maximum line length
+max-line-length=79
+
+# Expected indentation (spaces)
+indent-string='    '
+
+# Number of spaces for indented blocks
+indent-after-paren=4
+
+# Max number of lines in a module
+max-module-lines=1000
+
+[BASIC]
+# Good variable names
+good-names=i,j,k,ex,Run,_,g,s,df,dt,x,y,z,t
+
+# Bad variable names regex
+bad-name-rgxs=^[A-Z][a-z]*$
+
+# Allow shorter names for very common variables
+const-rgx=(([A-Z_][A-Z0-9_]*)|([a-z_][a-z0-9_]*)|(_[A-Z0-9_]*)|(__.*__)|(_.*))$
+
+# Naming conventions
+argument-naming-style=snake_case
+attr-naming-style=snake_case
+class-naming-style=PascalCase
+const-naming-style=UPPER_CASE
+function-naming-style=snake_case
+method-naming-style=snake_case
+module-naming-style=snake_case
+variable-naming-style=snake_case
+inlinevar-naming-style=snake_case
+
+[DESIGN]
+# Maximum number of local variables
+max-locals=15
+
+# Maximum number of function arguments
+max-arguments=5
+
+# Maximum number of instance attributes
+max-attributes=7
+
+# Maximum number of statements in function body
+max-statements=50
+
+# Maximum number of branches
+max-branches=12
+
+# Maximum number of parents for a class
+max-parents=7
+
+[CLASSES]
+# List of method names used to declare an abstract method
+abstract-methods=abstractmethod
+
+[IMPORTS]
+# Deprecated modules
+deprecated-modules=optparse,tkinter.tix
+
+[EXCEPTIONS]
+# Exceptions that should not be caught
+overgeneral-exceptions=BaseException,Exception
+
+[DOCSTRING]
+# Docstring format
+docstring-min-length=10
+
+[LOGGING]
+# Format of logging function message
+logging-format-style=old
+
+[MISCELLANEOUS]
+# Notes to trigger special attention
+notes=FIXME,XXX,TODO
+
+[SIMILARITY]
+# Ignore docstrings when computing similarity
+ignore-docstrings=True
+
+# Ignore imports when computing similarity
+ignore-imports=True
+
+# Minimum lines count for similarities
+min-similarity-lines=4
