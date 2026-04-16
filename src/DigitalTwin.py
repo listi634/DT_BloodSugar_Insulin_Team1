@@ -10,7 +10,7 @@ MINUTES = 1440    # 24 Stunden
 GLUCOSE_THRESHOLD = 20.0  # Schwellenwert für automatische Insulin-Injektion (mg/dl)
 
 # Dynamik-Konstanten (vereinfacht)
-k_g = 0.02  # Wie schnell Insulin den Zucker senkt
+k_g = 10  # Wie schnell Insulin den Zucker senkt 
 k_i = 0.05  # Wie schnell Insulin abgebaut wird
 k_abs = 0.03 # Wie schnell Nahrung ins Blut geht
 
