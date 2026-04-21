@@ -1,0 +1,63 @@
+"""Tests for low-order physiology model behavior."""
+
+from src.core.model import PhysiologyModel
+from src.core.state import ModelConfig
+from src.core.state import SimulationState
+
+
+def test_meal_carb_pool_increases_glucose() -> None:
+    """A non-zero carb pool should push glucose above basal."""
+    model = PhysiologyModel()
+    config = ModelConfig()
+    state = SimulationState(
+        time_minutes=0.0,
+        glucose=config.glucose_basal,
+        insulin=config.insulin_basal,
+        carb_pool=80.0,
+        insulin_rate=0.0,
+        sport_multiplier=1.0,
+        sport_minutes_remaining=0.0,
+    )
+
+    next_state = model.integrate(state, config)
+
+    assert next_state.glucose > config.glucose_basal
+
+
+def test_high_glucose_triggers_endogenous_insulin_response() -> None:
+    """Insulin should increase when glucose is elevated."""
+    model = PhysiologyModel()
+    config = ModelConfig()
+    state = SimulationState(
+        time_minutes=0.0,
+        glucose=9.0,
+        insulin=config.insulin_basal,
+        carb_pool=0.0,
+        insulin_rate=0.0,
+        sport_multiplier=1.0,
+        sport_minutes_remaining=0.0,
+    )
+
+    next_state = model.integrate(state, config)
+
+    assert next_state.insulin > config.insulin_basal
+
+
+def test_state_values_are_clamped_to_safety_bounds() -> None:
+    """Integrator should keep outputs within configured limits."""
+    model = PhysiologyModel()
+    config = ModelConfig(max_glucose=12.0, max_insulin=50.0)
+    state = SimulationState(
+        time_minutes=0.0,
+        glucose=20.0,
+        insulin=55.0,
+        carb_pool=1000.0,
+        insulin_rate=10.0,
+        sport_multiplier=1.5,
+        sport_minutes_remaining=10.0,
+    )
+
+    next_state = model.integrate(state, config)
+
+    assert next_state.glucose <= config.max_glucose
+    assert next_state.insulin <= config.max_insulin

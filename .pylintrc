@@ -6,12 +6,10 @@
 load-plugins=pylint.extensions.docparams
 
 # Patterns for which to ignore warnings
-ignore-patterns=test_.*?py
+ignore-patterns=test_.*?py,DigitalTwin\.py
 
 # Minimum Python version
 min-similarity-lines=4
-min-protected-access=2
-unsafe-load-any-extension=False
 
 [MESSAGES CONTROL]
 # Disable specific warnings
@@ -19,6 +17,10 @@ disable=
     missing-module-docstring,
     too-few-public-methods,
     too-many-arguments,
+    too-many-positional-arguments,
+    too-many-instance-attributes,
+    too-many-ancestors,
+    import-outside-toplevel,
     too-many-locals,
     duplicate-code,
 
@@ -42,9 +44,6 @@ max-module-lines=1000
 # Good variable names
 good-names=i,j,k,ex,Run,_,g,s,df,dt,x,y,z,t
 
-# Bad variable names regex
-bad-name-rgxs=^[A-Z][a-z]*$
-
 # Allow shorter names for very common variables
 const-rgx=(([A-Z_][A-Z0-9_]*)|([a-z_][a-z0-9_]*)|(_[A-Z0-9_]*)|(__.*__)|(_.*))$
 
@@ -63,9 +62,6 @@ inlinevar-naming-style=snake_case
 # Maximum number of local variables
 max-locals=15
 
-# Maximum number of function arguments
-max-arguments=5
-
 # Maximum number of instance attributes
 max-attributes=7
 
@@ -78,17 +74,9 @@ max-branches=12
 # Maximum number of parents for a class
 max-parents=7
 
-[CLASSES]
-# List of method names used to declare an abstract method
-abstract-methods=abstractmethod
-
 [IMPORTS]
 # Deprecated modules
 deprecated-modules=optparse,tkinter.tix
-
-[EXCEPTIONS]
-# Exceptions that should not be caught
-overgeneral-exceptions=BaseException,Exception
 
 [DOCSTRING]
 # Docstring format

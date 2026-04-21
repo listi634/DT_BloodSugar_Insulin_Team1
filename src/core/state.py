@@ -1,0 +1,115 @@
+"""Typed state and configuration objects for the digital twin."""
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    """Physiology model parameters and safety bounds."""
+
+    dt_minutes: float = 1.0
+    glucose_basal: float = 5.0
+    insulin_basal: float = 10.0
+    glucose_decay: float = 0.015
+    insulin_decay: float = 0.05
+    insulin_sensitivity: float = 0.06
+    insulin_response_gain: float = 0.32
+    meal_absorption_rate: float = 0.035
+    carb_to_glucose_gain: float = 0.065
+    min_glucose: float = 2.0
+    max_glucose: float = 20.0
+    min_insulin: float = 0.0
+    max_insulin: float = 200.0
+
+    def validate(self) -> None:
+        """Validate model parameters for physically meaningful values."""
+        if self.dt_minutes <= 0.0:
+            raise ValueError("dt_minutes must be positive")
+        if self.glucose_basal <= 0.0:
+            raise ValueError("glucose_basal must be positive")
+        if self.insulin_basal <= 0.0:
+            raise ValueError("insulin_basal must be positive")
+        if self.meal_absorption_rate <= 0.0:
+            raise ValueError("meal_absorption_rate must be positive")
+        if self.min_glucose >= self.max_glucose:
+            raise ValueError("min_glucose must be lower than max_glucose")
+        if self.min_insulin >= self.max_insulin:
+            raise ValueError("min_insulin must be lower than max_insulin")
+
+
+@dataclass(frozen=True)
+class ControllerConfig:
+    """Configuration for proportional insulin automation."""
+
+    target_glucose: float = 5.5
+    proportional_gain: float = 0.5
+    deadband: float = 0.15
+    max_insulin_rate: float = 2.0
+    max_rate_delta_per_step: float = 0.15
+
+    def validate(self) -> None:
+        """Validate controller tuning and safety limits."""
+        if self.target_glucose <= 0.0:
+            raise ValueError("target_glucose must be positive")
+        if self.proportional_gain < 0.0:
+            raise ValueError("proportional_gain must be non-negative")
+        if self.deadband < 0.0:
+            raise ValueError("deadband must be non-negative")
+        if self.max_insulin_rate <= 0.0:
+            raise ValueError("max_insulin_rate must be positive")
+        if self.max_rate_delta_per_step <= 0.0:
+            raise ValueError("max_rate_delta_per_step must be positive")
+
+
+@dataclass(frozen=True)
+class SportEvent:
+    """Temporary insulin sensitivity boost request."""
+
+    multiplier: float
+    duration_minutes: float
+
+    def validate(self) -> None:
+        """Validate sport event values."""
+        if self.multiplier < 1.0:
+            raise ValueError("sport multiplier must be at least 1.0")
+        if self.duration_minutes <= 0.0:
+            raise ValueError("sport duration must be positive")
+
+
+@dataclass
+class PendingEvents:
+    """Buffered user events to apply at the next simulation step."""
+
+    meal_carbs: float = 0.0
+    sport_event: SportEvent | None = None
+
+    def clear(self) -> None:
+        """Clear all pending inputs after event application."""
+        self.meal_carbs = 0.0
+        self.sport_event = None
+
+
+@dataclass
+class SimulationState:
+    """Continuous system state used by the model integrator."""
+
+    time_minutes: float
+    glucose: float
+    insulin: float
+    carb_pool: float
+    insulin_rate: float
+    sport_multiplier: float
+    sport_minutes_remaining: float
+
+
+@dataclass(frozen=True)
+class SimulationSnapshot:
+    """Immutable history row for plotting and analysis."""
+
+    time_minutes: float
+    glucose: float
+    insulin: float
+    insulin_rate: float
+    carb_pool: float
+    sport_multiplier: float
+    sport_minutes_remaining: float

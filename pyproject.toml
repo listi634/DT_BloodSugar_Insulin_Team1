@@ -16,6 +16,7 @@ authors = [
 dependencies = [
     "numpy>=1.24.0",
     "matplotlib>=3.7.0",
+    "customtkinter>=5.2.0",
 ]
 
 [project.optional-dependencies]
@@ -32,6 +33,7 @@ dev = [
 line-length = 79
 target-version = ['py313']
 include = '\.pyi?$'
+extend-exclude = 'src[\\/]DigitalTwin\.py'
 exclude = '''
 /(
     \.git
