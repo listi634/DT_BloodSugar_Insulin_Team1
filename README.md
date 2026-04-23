@@ -12,7 +12,10 @@ developed as part of the Digital Twin lecture.
 
 ## Project Overview
 
-This project implements a digital twin simulation model for blood glucose and insulin dynamics. The model simulates the physiological relationships between meals, insulin injections, and blood glucose levels.
+This project implements a modular digital twin simulation for blood glucose
+and insulin dynamics. It models the physiological relationships between
+meals, insulin dosing, and blood glucose levels, and combines a simulation
+core with a responsive GUI for interactive experiments.
 
 **Language**: Python 3.13  
 **Team**: Team 1  
@@ -57,20 +60,39 @@ DT_BloodSugar_Insulin_Team1/
 ├── .github/
 │   ├── copilot-instructions.md      ← GitHub Copilot Guidelines (START HERE!)
 │   └── VERIFICATION_SETUP.md        ← Detailed setup & troubleshooting
+├── archive/
+│   └── DigitalTwin.py               ← Legacy implementation (reference)
+├── project_files/
+│   ├── DT_glucose_insulin_tasks.pdf
+│   ├── DT_glucose_insulin_task_summary.md
+│   └── SW05 Blutzucker Insulin Simulation.pdf
 ├── scripts/
 │   ├── verify.py                    ← Verification script (Python)
 │   ├── verify.ps1                   ← Verification script (PowerShell)
 │   ├── verify.bat                   ← Verification script (Batch)
 │   └── README.md                    ← Scripts documentation
 ├── src/
-│   ├── DigitalTwin.py              ← Core simulation engine
-│   └── main.py                     ← Entry point and UI
+│   ├── core/
+│   │   ├── controller.py            ← Automated insulin control logic
+│   │   ├── integrator.py            ← Numeric integration helpers
+│   │   ├── model.py                 ← Glucose-insulin model equations
+│   │   ├── simulator.py             ← Simulation loop and event handling
+│   │   ├── state.py                 ← Simulation state/data containers
+│   │   └── __init__.py
+│   ├── gui/
+│   │   ├── app.py                   ← Main CustomTkinter application
+│   │   ├── control_panel.py         ← User inputs for meal/sport/actions
+│   │   ├── plot_frame.py            ← Embedded Matplotlib live charts
+│   │   └── __init__.py
+│   ├── main.py                      ← Entry point
+│   └── __init__.py
 ├── tests/
 │   ├── __init__.py
 │   ├── README.md                   ← Testing documentation
-│   └── test_digital_twin.py        ← Unit tests
-├── project_files/
-│   └── SW05 Blutzucker Insulin Simulation.pdf  ← Assignment
+│   ├── test_controller.py
+│   ├── test_integrator.py
+│   ├── test_model.py
+│   └── test_simulator.py
 ├── .gitignore
 ├── .pylintrc                        ← Pylint configuration
 ├── pyproject.toml                   ← Black & pytest configuration
@@ -185,6 +207,8 @@ def calculate_glucose_delta(
 ### Runtime
 - **numpy** - Numerical computations
 - **matplotlib** - Visualization and UI
+- **customtkinter** - Modern Tkinter-based GUI framework
+- **scipy** - Scientific utilities for numerical workflows
 
 ### Development
 - **black** - Code formatter
@@ -210,7 +234,7 @@ pytest tests/ -v --tb=short
 
 ### Run Specific Test
 ```bash
-pytest tests/test_digital_twin.py::TestGlucoseSimulation::test_init -v
+pytest tests/test_simulator.py::test_reset_restores_initial_state_and_history -v
 ```
 
 ### With Coverage
@@ -275,7 +299,7 @@ See [VERIFICATION_SETUP.md](.github/VERIFICATION_SETUP.md#mypy-issues)
 
 1. Check [`.github/copilot-instructions.md`](.github/copilot-instructions.md) for guidelines
 2. See [`.github/VERIFICATION_SETUP.md`](.github/VERIFICATION_SETUP.md) for tool details
-3. Review [assignment document](project_files/SW05%20Blutzucker%20Insulin%20Simulation.pdf)
+3. Review [task summary](project_files/DT_glucose_insulin_task_summary.md)
 4. Check git log for similar changes: `git log --oneline`
 
 ---
