@@ -1,6 +1,9 @@
 """Tests for low-order physiology model behavior."""
 
+import numpy as np
+
 from src.core.model import PhysiologyModel
+from src.core.state import IntegratorConfig
 from src.core.state import ModelConfig
 from src.core.state import SimulationState
 
@@ -61,3 +64,31 @@ def test_state_values_are_clamped_to_safety_bounds() -> None:
 
     assert next_state.glucose <= config.max_glucose
     assert next_state.insulin <= config.max_insulin
+
+
+def test_integrator_events_are_forwarded_to_solver() -> None:
+    """Configured integrator events should be invoked during integration."""
+    event_calls: list[float] = []
+
+    def tracking_event(time_minutes: float, values: object) -> float:
+        del values
+        event_calls.append(time_minutes)
+        return 1.0
+
+    model = PhysiologyModel(
+        integrator_config=IntegratorConfig(events=[tracking_event])
+    )
+    config = ModelConfig()
+    state = SimulationState(
+        time_minutes=0.0,
+        glucose=config.glucose_basal,
+        insulin=config.insulin_basal,
+        carb_pool=10.0,
+        insulin_rate=0.0,
+        sport_multiplier=1.0,
+        sport_minutes_remaining=0.0,
+    )
+
+    model.integrate(state, config)
+
+    assert np.asarray(event_calls).size > 0

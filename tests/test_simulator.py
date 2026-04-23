@@ -4,6 +4,7 @@ from src.core.controller import ProportionalController
 from src.core.model import PhysiologyModel
 from src.core.simulator import GlucoseSimulator
 from src.core.state import ControllerConfig
+from src.core.state import IntegratorConfig
 from src.core.state import ModelConfig
 from src.core.state import SimulationState
 
@@ -71,3 +72,30 @@ def test_reset_restores_initial_state_and_history() -> None:
     assert len(simulator.history) == 1
     assert simulator.current_state.time_minutes == 0.0
     assert simulator.current_state.carb_pool == 0.0
+
+
+def test_simulator_accepts_explicit_integrator_config() -> None:
+    """Simulator should pass chosen integrator settings into model."""
+    model_config = ModelConfig()
+    controller_config = ControllerConfig()
+    initial_state = SimulationState(
+        time_minutes=0.0,
+        glucose=model_config.glucose_basal,
+        insulin=model_config.insulin_basal,
+        carb_pool=0.0,
+        insulin_rate=0.0,
+        sport_multiplier=1.0,
+        sport_minutes_remaining=0.0,
+    )
+    simulator = GlucoseSimulator(
+        model=PhysiologyModel(),
+        controller=ProportionalController(),
+        model_config=model_config,
+        controller_config=controller_config,
+        initial_state=initial_state,
+        integrator_config=IntegratorConfig(method="DOP853"),
+    )
+
+    snapshot = simulator.step()
+
+    assert snapshot.time_minutes == model_config.dt_minutes

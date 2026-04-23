@@ -1,8 +1,12 @@
 """CustomTkinter application shell for the glucose-insulin simulator."""
 
+from collections.abc import Callable
+from typing import cast
+
 import customtkinter as ctk
 
 from src.core.simulator import GlucoseSimulator
+from src.core.state import IntegratorMethod
 from src.gui.control_panel import ControlPanel
 from src.gui.plot_frame import PlotFrame
 
@@ -12,15 +16,18 @@ class DigitalTwinApp(ctk.CTk):
 
     def __init__(
         self,
-        simulator: GlucoseSimulator,
+        simulator_builder: Callable[[IntegratorMethod], GlucoseSimulator],
         step_interval_ms: int = 200,
+        integrator_method: IntegratorMethod = "RK45",
     ) -> None:
         """Create app widgets and bind control callbacks."""
         super().__init__()
         if step_interval_ms <= 0:
             raise ValueError("step_interval_ms must be positive")
 
-        self._simulator = simulator
+        self._simulator_builder = simulator_builder
+        self._integrator_method = integrator_method
+        self._simulator = simulator_builder(integrator_method)
         self._step_interval_ms = step_interval_ms
         self._running = False
         self._loop_after_id: str | None = None
@@ -40,6 +47,7 @@ class DigitalTwinApp(ctk.CTk):
             self,
             on_meal=self._on_meal,
             on_sport=self._on_sport,
+            on_method_change=self._on_integrator_method_change,
             on_toggle_run=self._toggle_run,
             on_reset=self._on_reset,
             on_error=self._set_status,
@@ -127,6 +135,22 @@ class DigitalTwinApp(ctk.CTk):
         self._simulator.reset()
         self._refresh_view()
         self._set_status("Simulation reset.")
+
+    def _on_integrator_method_change(self, method: str) -> None:
+        """Apply selected integrator method and rebuild simulator state."""
+        if method not in {"RK45", "DOP853", "BDF"}:
+            self._set_status(f"Unsupported integrator method: {method}")
+            return
+        if method == self._integrator_method:
+            return
+        selected_method = cast(IntegratorMethod, method)
+        self._cancel_schedule()
+        self._running = False
+        self.control_panel.set_running(False)
+        self._integrator_method = selected_method
+        self._simulator = self._simulator_builder(selected_method)
+        self._refresh_view()
+        self._set_status(f"Integrator method set to {selected_method}.")
 
     def _schedule_next_step(self) -> None:
         """Schedule the next simulation tick on the Tk event loop."""

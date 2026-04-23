@@ -1,6 +1,12 @@
 """Typed state and configuration objects for the digital twin."""
 
+from collections.abc import Callable
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Literal
+
+IntegratorMethod = Literal["RK45", "DOP853", "BDF"]
+IntegratorEvent = Callable[[float, object], float]
 
 
 @dataclass(frozen=True)
@@ -59,6 +65,30 @@ class ControllerConfig:
             raise ValueError("max_insulin_rate must be positive")
         if self.max_rate_delta_per_step <= 0.0:
             raise ValueError("max_rate_delta_per_step must be positive")
+
+
+@dataclass(frozen=True)
+class IntegratorConfig:
+    """Configuration for one-step ODE integration with solve_ivp."""
+
+    method: IntegratorMethod = "RK45"
+    rtol: float = 1e-6
+    atol: float = 1e-8
+    max_step: float | None = None
+    dense_output: bool = False
+    events: Sequence[IntegratorEvent] | None = None
+
+    def validate(self) -> None:
+        """Validate solver configuration and supported methods."""
+        supported_methods = {"RK45", "DOP853", "BDF"}
+        if self.method not in supported_methods:
+            raise ValueError("method must be one of RK45, DOP853, or BDF")
+        if self.rtol <= 0.0:
+            raise ValueError("rtol must be positive")
+        if self.atol <= 0.0:
+            raise ValueError("atol must be positive")
+        if self.max_step is not None and self.max_step <= 0.0:
+            raise ValueError("max_step must be positive when provided")
 
 
 @dataclass(frozen=True)

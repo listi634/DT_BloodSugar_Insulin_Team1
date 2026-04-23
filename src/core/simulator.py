@@ -5,6 +5,7 @@ from dataclasses import replace
 from src.core.controller import ProportionalController
 from src.core.model import PhysiologyModel
 from src.core.state import ControllerConfig
+from src.core.state import IntegratorConfig
 from src.core.state import ModelConfig
 from src.core.state import PendingEvents
 from src.core.state import SimulationSnapshot
@@ -22,6 +23,7 @@ class GlucoseSimulator:
         model_config: ModelConfig,
         controller_config: ControllerConfig,
         initial_state: SimulationState,
+        integrator_config: IntegratorConfig | None = None,
     ) -> None:
         """Create simulator with explicit dependencies and typed state."""
         model_config.validate()
@@ -32,6 +34,8 @@ class GlucoseSimulator:
             raise ValueError("initial_state.insulin must be non-negative")
 
         self._model = model
+        if integrator_config is not None:
+            self._model.set_integrator_config(integrator_config)
         self._controller = controller
         self._model_config = model_config
         self._controller_config = controller_config

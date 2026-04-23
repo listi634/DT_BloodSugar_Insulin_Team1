@@ -2,25 +2,41 @@
 
 from pathlib import Path
 import sys
+from typing import Literal
+from typing import TYPE_CHECKING
 
-# Allow running as: python src/main.py
-if __package__ in (None, ""):
-    project_root = Path(__file__).resolve().parents[1]
-    if str(project_root) not in sys.path:
-        sys.path.insert(0, str(project_root))
+if TYPE_CHECKING:
+    from src.core.simulator import GlucoseSimulator
 
-from src.core.controller import ProportionalController
-from src.core.model import PhysiologyModel
-from src.core.simulator import GlucoseSimulator
-from src.core.state import ControllerConfig
-from src.core.state import ModelConfig
-from src.core.state import SimulationState
+IntegratorMethod = Literal["RK45", "DOP853", "BDF"]
 
 
-def build_simulator() -> GlucoseSimulator:
+def _ensure_project_root_on_sys_path() -> None:
+    """Allow running as a script via `python src/main.py`."""
+    if __package__ in (None, ""):
+        project_root = Path(__file__).resolve().parents[1]
+        if str(project_root) not in sys.path:
+            sys.path.insert(0, str(project_root))
+
+
+def build_simulator(
+    integrator_method: IntegratorMethod = "RK45",
+) -> "GlucoseSimulator":
     """Build simulator dependencies with validated configuration."""
+    _ensure_project_root_on_sys_path()
+
+    from src.core.controller import ProportionalController
+    from src.core.integrator import SolveIvPIntegrator
+    from src.core.model import PhysiologyModel
+    from src.core.simulator import GlucoseSimulator
+    from src.core.state import ControllerConfig
+    from src.core.state import IntegratorConfig
+    from src.core.state import ModelConfig
+    from src.core.state import SimulationState
+
     model_config = ModelConfig()
     controller_config = ControllerConfig()
+    integrator_config = IntegratorConfig(method=integrator_method)
     initial_state = SimulationState(
         time_minutes=0.0,
         glucose=model_config.glucose_basal,
@@ -32,16 +48,22 @@ def build_simulator() -> GlucoseSimulator:
     )
 
     return GlucoseSimulator(
-        model=PhysiologyModel(),
+        model=PhysiologyModel(
+            integrator=SolveIvPIntegrator(),
+            integrator_config=integrator_config,
+        ),
         controller=ProportionalController(),
         model_config=model_config,
         controller_config=controller_config,
         initial_state=initial_state,
+        integrator_config=integrator_config,
     )
 
 
 def main() -> int:
     """Start application and report dependency/setup issues clearly."""
+    _ensure_project_root_on_sys_path()
+
     try:
         from src.gui.app import DigitalTwinApp
     except ImportError as exc:
@@ -52,8 +74,10 @@ def main() -> int:
         print(f"Import error: {exc}")
         return 1
 
-    simulator = build_simulator()
-    app = DigitalTwinApp(simulator=simulator, step_interval_ms=200)
+    app = DigitalTwinApp(
+        simulator_builder=build_simulator,
+        step_interval_ms=200,
+    )
     app.mainloop()
     return 0
 

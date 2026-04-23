@@ -13,6 +13,7 @@ class ControlPanel(ctk.CTkFrame):
         master: ctk.CTkBaseClass,
         on_meal: Callable[[float], None],
         on_sport: Callable[[float, float], None],
+        on_method_change: Callable[[str], None],
         on_toggle_run: Callable[[], None],
         on_reset: Callable[[], None],
         on_error: Callable[[str], None],
@@ -21,6 +22,7 @@ class ControlPanel(ctk.CTkFrame):
         super().__init__(master)
         self._on_meal = on_meal
         self._on_sport = on_sport
+        self._on_method_change = on_method_change
         self._on_toggle_run = on_toggle_run
         self._on_reset = on_reset
         self._on_error = on_error
@@ -72,13 +74,26 @@ class ControlPanel(ctk.CTkFrame):
             row=7, column=0, sticky="ew", padx=12, pady=(0, 14)
         )
 
+        ctk.CTkLabel(self, text="Integrator method").grid(
+            row=8, column=0, sticky="w", padx=12, pady=(0, 4)
+        )
+        self.integrator_method_menu = ctk.CTkOptionMenu(
+            self,
+            values=["RK45", "DOP853", "BDF"],
+            command=self._on_method_change,
+        )
+        self.integrator_method_menu.set("RK45")
+        self.integrator_method_menu.grid(
+            row=9, column=0, sticky="ew", padx=12, pady=(0, 14)
+        )
+
         self.run_button = ctk.CTkButton(
             self,
             text="Run",
             command=self._on_toggle_run,
         )
         self.run_button.grid(
-            row=8, column=0, sticky="ew", padx=12, pady=(0, 8)
+            row=10, column=0, sticky="ew", padx=12, pady=(0, 8)
         )
 
         self.reset_button = ctk.CTkButton(
@@ -89,7 +104,7 @@ class ControlPanel(ctk.CTkFrame):
             command=self._on_reset,
         )
         self.reset_button.grid(
-            row=9, column=0, sticky="ew", padx=12, pady=(0, 12)
+            row=11, column=0, sticky="ew", padx=12, pady=(0, 12)
         )
 
     def set_running(self, running: bool) -> None:

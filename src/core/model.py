@@ -1,5 +1,9 @@
 """Physiology model for glucose-insulin dynamics."""
 
+import numpy as np
+
+from src.core.integrator import SolveIvPIntegrator
+from src.core.state import IntegratorConfig
 from src.core.state import ModelConfig
 from src.core.state import SimulationState
 
@@ -12,10 +16,62 @@ def _clamp(value: float, lower: float, upper: float) -> float:
 class PhysiologyModel:
     """Low-order grey-box model with stable glucose-insulin coupling."""
 
+    def __init__(
+        self,
+        integrator: SolveIvPIntegrator | None = None,
+        integrator_config: IntegratorConfig | None = None,
+    ) -> None:
+        """Create model with configurable continuous-time integrator."""
+        self._integrator = integrator or SolveIvPIntegrator()
+        self._integrator_config = integrator_config or IntegratorConfig()
+        self._integrator_config.validate()
+
+    def set_integrator_config(
+        self,
+        integrator_config: IntegratorConfig,
+    ) -> None:
+        """Replace integrator settings used for subsequent model steps."""
+        integrator_config.validate()
+        self._integrator_config = integrator_config
+
+    def _derivative(
+        self,
+        _time_minutes: float,
+        values: np.ndarray,
+        config: ModelConfig,
+        sensitivity_multiplier: float,
+        insulin_rate: float,
+    ) -> np.ndarray:
+        """Compute continuous-time state derivatives for solve_ivp."""
+        glucose = float(values[0])
+        insulin = float(values[1])
+        carb_pool = float(values[2])
+
+        insulin_effect = max(0.0, insulin - config.insulin_basal)
+        glucose_effect = max(0.0, glucose - config.glucose_basal)
+        effective_sensitivity = (
+            config.insulin_sensitivity * sensitivity_multiplier
+        )
+
+        d_glucose = (
+            -config.glucose_decay * (glucose - config.glucose_basal)
+            - effective_sensitivity * insulin_effect
+            + config.carb_to_glucose_gain * carb_pool
+        )
+
+        d_insulin = (
+            -config.insulin_decay * (insulin - config.insulin_basal)
+            + config.insulin_response_gain * glucose_effect
+            + insulin_rate
+        )
+
+        d_carb_pool = -config.meal_absorption_rate * carb_pool
+        return np.array([d_glucose, d_insulin, d_carb_pool], dtype=float)
+
     def integrate(
         self, state: SimulationState, config: ModelConfig
     ) -> SimulationState:
-        """Integrate one simulation step using Euler forward integration.
+        """Integrate one simulation step using solve_ivp over [t, t+dt].
 
         Args:
             state: Current physiological state.
@@ -41,42 +97,40 @@ class PhysiologyModel:
             )
 
         dt_minutes = config.dt_minutes
-        insulin_effect = max(0.0, state.insulin - config.insulin_basal)
-        glucose_effect = max(0.0, state.glucose - config.glucose_basal)
 
         sensitivity_multiplier = 1.0
         if state.sport_minutes_remaining > 0.0:
             sensitivity_multiplier = state.sport_multiplier
 
-        effective_sensitivity = (
-            config.insulin_sensitivity * sensitivity_multiplier
+        initial_values = np.array(
+            [state.glucose, state.insulin, state.carb_pool],
+            dtype=float,
         )
-
-        d_glucose = (
-            -config.glucose_decay * (state.glucose - config.glucose_basal)
-            - effective_sensitivity * insulin_effect
-            + config.carb_to_glucose_gain * state.carb_pool
+        next_values, _ = self._integrator.integrate_step(
+            derivative=lambda time_minutes, values: self._derivative(
+                time_minutes,
+                values,
+                config,
+                sensitivity_multiplier,
+                state.insulin_rate,
+            ),
+            y0=initial_values,
+            t0=state.time_minutes,
+            dt=dt_minutes,
+            config=self._integrator_config,
         )
-
-        d_insulin = (
-            -config.insulin_decay * (state.insulin - config.insulin_basal)
-            + config.insulin_response_gain * glucose_effect
-            + state.insulin_rate
-        )
-
-        d_carb_pool = -config.meal_absorption_rate * state.carb_pool
 
         next_glucose = _clamp(
-            state.glucose + d_glucose * dt_minutes,
+            float(next_values[0]),
             config.min_glucose,
             config.max_glucose,
         )
         next_insulin = _clamp(
-            state.insulin + d_insulin * dt_minutes,
+            float(next_values[1]),
             config.min_insulin,
             config.max_insulin,
         )
-        next_carb_pool = max(0.0, state.carb_pool + d_carb_pool * dt_minutes)
+        next_carb_pool = max(0.0, float(next_values[2]))
 
         next_sport_remaining = max(
             0.0,
