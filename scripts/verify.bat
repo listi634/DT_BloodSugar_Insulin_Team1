@@ -117,11 +117,11 @@ if !PYTEST_PASS! equ 1 (
 echo ========================================================================
 
 if !BLACK_PASS! equ 1 if !MYPY_PASS! equ 1 if !PYTEST_PASS! equ 1 (
-    echo ✓ ALL CRITICAL CHECKS PASSED - Code is ready for commit!
+    echo ALL CRITICAL CHECKS PASSED - Code is ready for commit!
     endlocal
     exit /b 0
 ) else (
-    echo ✗ SOME CHECKS FAILED - Fix issues before committing
+    echo SOME CHECKS FAILED - Fix issues before committing
     endlocal
     exit /b 1
 )

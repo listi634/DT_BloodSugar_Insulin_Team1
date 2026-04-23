@@ -33,7 +33,7 @@ def run_command(cmd: list[str], description: str) -> bool:
         result = subprocess.run(cmd, check=False)
         return result.returncode == 0
     except FileNotFoundError as e:
-        print(f"❌ ERROR: Command not found: {e}")
+        print(f"[ERROR] Command not found: {e}")
         print(f"   Install with: pipenv install --dev")
         return False
 
@@ -47,36 +47,36 @@ def main(target_path: str = "src") -> int:
     Returns:
         Exit code (0 = success, 1 = failure).
     """
-    print("╔" + "="*68 + "╗")
-    print("║" + " "*15 + "GITHUB COPILOT CODE VERIFICATION" + " "*20 + "║")
-    print("║" + " "*17 + "DT_BloodSugar_Insulin_Team1" + " "*24 + "║")
-    print("╚" + "="*68 + "╝")
+    print("="*70)
+    print("GITHUB COPILOT CODE VERIFICATION")
+    print("DT_BloodSugar_Insulin_Team1")
+    print("="*70)
     
     results = {}
     
     # Step 1: Black (Auto-formatter)
-    print("\n" + "█" * 70)
+    print("\n" + "=" * 70)
     results['black'] = run_command(
         ['black', target_path, '--line-length=79'],
         '1. AUTO-FORMATTING WITH BLACK'
     )
     
     # Step 2: Pylint (Linter)
-    print("\n" + "█" * 70)
+    print("\n" + "=" * 70)
     results['pylint'] = run_command(
         ['pylint', target_path, '--rcfile=.pylintrc'],
         '2. LINTING WITH PYLINT'
     )
     
     # Step 3: mypy (Type checker)
-    print("\n" + "█" * 70)
+    print("\n" + "=" * 70)
     results['mypy'] = run_command(
         ['mypy', target_path, '--strict'],
         '3. TYPE CHECKING WITH MYPY'
     )
     
     # Step 4: Run tests if they exist
-    print("\n" + "█" * 70)
+    print("\n" + "=" * 70)
     if Path('tests').exists():
         results['pytest'] = run_command(
             ['pytest', 'tests/', '-v', '--tb=short'],
@@ -92,18 +92,18 @@ def main(target_path: str = "src") -> int:
     print("="*70)
     
     for tool, passed in results.items():
-        status = "✅ PASSED" if passed else "❌ FAILED"
+        status = "PASSED" if passed else "FAILED"
         print(f"{tool:12} {status}")
     
     all_passed = all(results.values())
     
     print("="*70)
     if all_passed:
-        print("✅ ALL CHECKS PASSED - Code is ready for commit!")
+        print("ALL CHECKS PASSED - Code is ready for commit!")
         print("="*70)
         return 0
     else:
-        print("❌ SOME CHECKS FAILED - Fix issues before committing")
+        print("SOME CHECKS FAILED - Fix issues before committing")
         print("="*70)
         return 1
 

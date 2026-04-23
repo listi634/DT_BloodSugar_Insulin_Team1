@@ -37,14 +37,14 @@ function Run-Check {
     try {
         & $Command[0] $Command[1..($Command.Length-1)] | Tee-Object -Variable output
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "✓ $Tool completed successfully"
+            Write-Host "[OK] $Tool completed successfully"
             return $true
         } else {
-            Write-Host "✗ $Tool reported issues (exit code: $LASTEXITCODE)"
+            Write-Host "[FAILED] $Tool reported issues (exit code: $LASTEXITCODE)"
             return $false
         }
     } catch {
-        Write-Host "✗ ERROR: Could not run $Tool"
+        Write-Host "[ERROR] Could not run $Tool"
         Write-Host "  $_"
         Write-Host "  Install with: pipenv install --dev"
         return $false
@@ -53,7 +53,7 @@ function Run-Check {
 
 # Step 1: Black
 Write-Host ""
-Write-Host ("█" * 70)
+Write-Host ("=" * 70)
 $script:results["Black"] = Run-Check `
     "Black" `
     @("black", $Target, "--line-length=79") `
@@ -61,7 +61,7 @@ $script:results["Black"] = Run-Check `
 
 # Step 2: Pylint
 Write-Host ""
-Write-Host ("█" * 70)
+Write-Host ("=" * 70)
 $script:results["Pylint"] = Run-Check `
     "Pylint" `
     @("pylint", $Target, "--rcfile=.pylintrc") `
@@ -69,7 +69,7 @@ $script:results["Pylint"] = Run-Check `
 
 # Step 3: mypy
 Write-Host ""
-Write-Host ("█" * 70)
+Write-Host ("=" * 70)
 $script:results["mypy"] = Run-Check `
     "mypy" `
     @("mypy", $Target, "--strict") `
@@ -78,7 +78,7 @@ $script:results["mypy"] = Run-Check `
 # Step 4: Tests
 if (Test-Path "tests") {
     Write-Host ""
-    Write-Host ("█" * 70)
+    Write-Host ("=" * 70)
     $script:results["Tests"] = Run-Check `
         "pytest" `
         @("pytest", "tests/", "-v", "--tb=short") `
@@ -96,7 +96,7 @@ Write-Host "VERIFICATION SUMMARY"
 Write-Host "========================================================================"
 
 foreach ($tool in $script:results.Keys) {
-    $status = if ($script:results[$tool]) { "✓ PASSED" } else { "✗ FAILED" }
+    $status = if ($script:results[$tool]) { "PASSED" } else { "FAILED" }
     Write-Host ("{0,-12} {1}" -f $tool, $status)
 }
 
@@ -104,11 +104,11 @@ Write-Host "====================================================================
 
 $allPassed = $script:results.Values | Where-Object { -not $_ } | Measure-Object | Select-Object -ExpandProperty Count
 if ($allPassed -eq 0) {
-    Write-Host "✓ ALL CHECKS PASSED - Code is ready for commit!"
+    Write-Host "ALL CHECKS PASSED - Code is ready for commit!"
     Write-Host "========================================================================"
     exit 0
 } else {
-    Write-Host "✗ SOME CHECKS FAILED - Fix issues before committing"
+    Write-Host "SOME CHECKS FAILED - Fix issues before committing"
     Write-Host "========================================================================"
     exit 1
 }
