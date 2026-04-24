@@ -17,8 +17,9 @@ This document defines the guidelines and workflow for using GitHub Copilot in th
 4. [Verification Workflow][verification-workflow]
 5. [Configuration Files][configuration-files]
 6. [Common Patterns][common-patterns]
-7. [Prompting Best Practices][prompting-best-practices]
-8. [Troubleshooting][troubleshooting]
+7. [Documentation Synchronization Rule][documentation-sync]
+8. [Prompting Best Practices][prompting-best-practices]
+9. [Troubleshooting][troubleshooting]
 
 [quick-start]: #quick-start
 [code-style-standards]: #code-style-standards
@@ -26,6 +27,7 @@ This document defines the guidelines and workflow for using GitHub Copilot in th
 [verification-workflow]: #verification-workflow
 [configuration-files]: #configuration-files
 [common-patterns]: #common-patterns
+[documentation-sync]: #documentation-sync
 [prompting-best-practices]: #prompting-best-practices
 [troubleshooting]: #troubleshooting
 
@@ -385,6 +387,30 @@ def get_state(self) -> dict[str, float]:
 
 ---
 
+## Documentation Synchronization Rule {#documentation-sync}
+
+Whenever implementation changes affect the digital twin model or
+simulation flow, update these files in the same change set:
+
+- `project_files/model_summary.md`
+- `project_files/simulation_summary.md`
+
+This applies to edits in (non-exhaustive):
+- `src/core/model.py`
+- `src/core/simulator.py`
+- `src/core/controller.py`
+- `src/core/integrator.py`
+- `src/core/state.py`
+
+Expected update behavior:
+- Keep equations, interfaces, control flow, and assumptions aligned with
+    current code.
+- If a change only affects one area, update only the corresponding
+    summary file.
+- Run verification after code/documentation updates as usual.
+
+---
+
 ## Prompting Best Practices {#prompting-best-practices}
 
 When requesting code from GitHub Copilot, use this template:
@@ -511,6 +537,7 @@ chmod +x .git/hooks/pre-commit
 - [ ] Docstrings are complete and accurate
 - [ ] Type hints present on all functions
 - [ ] No hardcoded values (use constants)
+- [ ] Model/simulation docs updated when related code changes
 - [ ] Tests pass
 - [ ] Commit message is descriptive
 
@@ -542,7 +569,9 @@ DT_BloodSugar_Insulin_Team1/
 │   ├── test_digital_twin.py
 │   └── README.md
 └── project_files/
-    └── SW05 Blutzucker Insulin Simulation.pdf
+│   ├── model_summary.md
+│   ├── simulation_summary.md
+│   └── SW05 Blutzucker Insulin Simulation.pdf
 ```
 
 ---

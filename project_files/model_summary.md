@@ -1,0 +1,182 @@
+# Digital Twin Model Summary
+
+## 1. Short Description of the System
+The implemented system is a low-order physiological digital twin for
+blood glucose and insulin dynamics. It models three coupled continuous
+states:
+- Glucose concentration in blood
+- Effective insulin level
+- Carbohydrate pool (meal absorption reservoir)
+
+The model is integrated in continuous time over fixed simulation steps
+using `scipy.integrate.solve_ivp`, with safety bounds applied to
+physiological values after each step.
+
+## 2. Purpose of the Model
+The model is designed to:
+- Reproduce plausible glucose-insulin trends for teaching and analysis
+- Support closed-loop insulin automation with a proportional controller
+- Allow user disturbances (meal and sport) to alter trajectories
+- Provide a compact, explainable baseline architecture for extension
+
+## 3. System Variables
+
+Compact system notation:
+
+$$
+\dot{\mathbf{x}} = f(\mathbf{x}, \mathbf{u}, \mathbf{p}, \mathbf{w}),
+\qquad
+\mathbf{y} = h(\mathbf{x}, \mathbf{u}, \mathbf{p})
+$$
+
+### Inputs `u`
+Control and known external inputs that influence dynamics:
+- `insulin_rate` (controller output, infused insulin rate)
+- `meal_carbs` (queued by user and injected into `carb_pool`)
+- `sport_multiplier`, `sport_minutes_remaining` (temporary sensitivity
+  modulation from user sport events)
+
+### Outputs `y`
+Measurable or exposed outputs:
+- `glucose`
+- `insulin`
+- `insulin_rate`
+- `time_minutes`
+- Optional: `carb_pool`, sport-related values for diagnostics
+
+### Parameters `p`
+Slowly changing/constant model parameters (`ModelConfig`):
+- `dt_minutes`
+- Basal levels: `glucose_basal`, `insulin_basal`
+- Dynamics: `glucose_decay`, `insulin_decay`
+- Couplings: `insulin_sensitivity`, `insulin_response_gain`
+- Meal dynamics: `meal_absorption_rate`, `carb_to_glucose_gain`
+- Safety clamps: `min_glucose`, `max_glucose`, `min_insulin`,
+  `max_insulin`
+
+### States `x`
+State stores all information needed to predict future behavior:
+
+$$
+\mathbf{x} =
+\begin{bmatrix}
+G \\
+I \\
+C
+\end{bmatrix}
+$$
+
+Simulation metadata that also affects future behavior:
+- `time_minutes`
+- `sport_multiplier`
+- `sport_minutes_remaining`
+- `insulin_rate` (held over each step until recomputed)
+
+### Disturbances `w`
+Uncontrolled or partially controlled effects:
+- Meal ingestion timing and amount (user-triggered disturbance)
+- Physical activity events (user-triggered sensitivity disturbance)
+- Numerical integration error and model mismatch vs. reality
+
+## 4. What Is Influenced, Measured, and Assumed Constant
+- Influenced directly: insulin infusion rate, meal/sport event injection
+- Measured/exposed: glucose and insulin trajectories (plus controls)
+- Treated as constant/slowly varying: model parameters in
+  `ModelConfig`
+
+## 5. Time Scale and System Type
+- Time scale of interest: minutes
+- Core dynamics: continuous-time ODEs
+- Execution style: sampled-data hybrid loop
+  - Continuous physiology integrated over each discrete step `dt_minutes`
+  - Discrete events (meal/sport) and control updates at step boundaries
+
+## 6. Subsystems (Implemented Decomposition)
+- Physiology subsystem (`PhysiologyModel`): ODE derivatives and bounded
+  state propagation
+- Controller subsystem (`ProportionalController`): insulin-rate command
+  from glucose error with deadband and rate limits
+- Event subsystem (`PendingEvents`): meal/sport buffering and
+  deterministic application
+- Integration subsystem (`SolveIvPIntegrator`): one-step numerical solve
+  with validated solver config
+
+```mermaid
+flowchart LR
+    U[User Events: Meal / Sport] --> E[Pending Event Application]
+    E --> C[Proportional Controller]
+    C --> M[Physiology ODE Model]
+    M --> I[solve_ivp Integrator]
+    I --> S[Next Simulation State]
+```
+
+## 7. Model Equations
+Let:
+
+$$
+\begin{aligned}
+G &:= \text{glucose}, \\
+I &:= \text{insulin}, \\
+C &:= \text{carbohydrate pool}, \\
+u_I &:= \text{commanded insulin rate}, \\
+s &:= \text{effective sport sensitivity multiplier},\; s \ge 1
+\end{aligned}
+$$
+
+Continuous-time dynamics:
+
+$$
+\frac{dG}{dt} = -k_g\,(G-G_b) - (S_I\,s)\,\max(0, I-I_b) + k_c\,C
+$$
+
+$$
+\frac{dI}{dt} = -k_i\,(I-I_b) + k_r\,\max(0, G-G_b) + u_I
+$$
+
+$$
+\frac{dC}{dt} = -k_a\,C
+$$
+
+with parameter mapping:
+
+$$
+\begin{aligned}
+k_g &= \texttt{glucose\_decay}, &
+k_i &= \texttt{insulin\_decay}, \\
+S_I &= \texttt{insulin\_sensitivity}, &
+k_r &= \texttt{insulin\_response\_gain}, \\
+k_a &= \texttt{meal\_absorption\_rate}, &
+k_c &= \texttt{carb\_to\_glucose\_gain}, \\
+G_b &= \texttt{glucose\_basal}, &
+I_b &= \texttt{insulin\_basal}
+\end{aligned}
+$$
+
+Post-step safety projection:
+
+$$
+G \leftarrow \operatorname{clamp}(G, G_{\min}, G_{\max}),
+\qquad
+I \leftarrow \operatorname{clamp}(I, I_{\min}, I_{\max}),
+\qquad
+C \leftarrow \max(0, C)
+$$
+
+Sport effect decay at step level:
+
+$$
+t_{\mathrm{sport}} \leftarrow
+\max\bigl(0,\, t_{\mathrm{sport}}-\Delta t\bigr)
+$$
+
+If the remaining sport time reaches zero:
+
+$$
+s \leftarrow 1.0
+$$
+
+## 8. Notes and Limitations
+- This is a grey-box educational model, not a clinical-grade patient
+  model.
+- It intentionally favors robustness and explainability over high-order
+  physiological fidelity.
