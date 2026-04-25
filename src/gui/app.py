@@ -1,14 +1,69 @@
 """CustomTkinter application shell for the glucose-insulin simulator."""
 
 from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 from typing import cast
 
 import customtkinter as ctk
 
+from src.core.benchmark_loader import GlucoBenchLoader
+from src.core.benchmark_loader import ValidationWindowData
 from src.core.simulator import GlucoseSimulator
 from src.core.state import IntegratorMethod
 from src.gui.control_panel import ControlPanel
 from src.gui.plot_frame import PlotFrame
+
+
+@dataclass
+class ValidationRunState:
+    """Mutable validation runtime state managed by the app layer."""
+
+    loaded: bool = False
+    user_id: str = ""
+    start_timestamp: str = ""
+    end_timestamp: str = ""
+    initial_glucose_mmol_l: float | None = None
+    duration_minutes: float = 0.0
+    glucose_reference: list[tuple[float, float]] | None = None
+    carb_reference: list[tuple[float, float]] | None = None
+    carb_replay_events: list[tuple[float, float]] | None = None
+    replay_index: int = 0
+
+    @classmethod
+    def from_window(cls, window: ValidationWindowData) -> "ValidationRunState":
+        """Create a loaded runtime state from a preloaded data window."""
+        return cls(
+            loaded=True,
+            user_id=window.user_id,
+            start_timestamp=window.start_timestamp,
+            end_timestamp=window.end_timestamp,
+            initial_glucose_mmol_l=window.initial_glucose_mmol_l,
+            duration_minutes=window.duration_minutes,
+            glucose_reference=list(window.glucose_reference),
+            carb_reference=list(window.carb_reference),
+            carb_replay_events=list(window.carb_replay_events),
+            replay_index=0,
+        )
+
+
+def collect_due_carb_events(
+    carb_events: list[tuple[float, float]],
+    start_index: int,
+    current_time_minutes: float,
+) -> tuple[list[float], int]:
+    """Return carb events due at current step time and next replay index."""
+    due_carbs: list[float] = []
+    replay_index = start_index
+    epsilon = 1e-9
+    while replay_index < len(carb_events):
+        event_time, carbs = carb_events[replay_index]
+        if event_time <= current_time_minutes + epsilon:
+            due_carbs.append(carbs)
+            replay_index += 1
+            continue
+        break
+    return due_carbs, replay_index
 
 
 class DigitalTwinApp(ctk.CTk):
@@ -16,7 +71,10 @@ class DigitalTwinApp(ctk.CTk):
 
     def __init__(
         self,
-        simulator_builder: Callable[[IntegratorMethod], GlucoseSimulator],
+        simulator_builder: Callable[
+            [IntegratorMethod, float | None],
+            GlucoseSimulator,
+        ],
         step_interval_ms: int = 200,
         integrator_method: IntegratorMethod = "RK45",
     ) -> None:
@@ -27,10 +85,12 @@ class DigitalTwinApp(ctk.CTk):
 
         self._simulator_builder = simulator_builder
         self._integrator_method = integrator_method
-        self._simulator = simulator_builder(integrator_method)
+        self._simulator = simulator_builder(integrator_method, None)
         self._step_interval_ms = step_interval_ms
         self._running = False
         self._loop_after_id: str | None = None
+        self._validation = ValidationRunState()
+        self._benchmark_loader: GlucoBenchLoader | None = None
 
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("green")
@@ -50,6 +110,11 @@ class DigitalTwinApp(ctk.CTk):
             on_method_change=self._on_integrator_method_change,
             on_toggle_run=self._toggle_run,
             on_reset=self._on_reset,
+            on_validation_user_change=self._on_validation_user_change,
+            on_validation_start_change=self._on_validation_start_change,
+            on_validation_end_change=self._on_validation_end_change,
+            on_validation_preload=self._on_validation_preload,
+            on_validation_run=self._on_validation_run,
             on_error=self._set_status,
         )
         self.control_panel.grid(
@@ -95,12 +160,16 @@ class DigitalTwinApp(ctk.CTk):
         )
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._setup_validation_data()
         self._refresh_view()
 
     def _toggle_run(self) -> None:
         """Toggle run/pause state for non-blocking simulation loop."""
         self._running = not self._running
         self.control_panel.set_running(self._running)
+        self.control_panel.set_manual_inputs_enabled(
+            not (self._running and self._validation.loaded)
+        )
         if self._running:
             self._set_status("Simulation running.")
             self._schedule_next_step()
@@ -132,7 +201,14 @@ class DigitalTwinApp(ctk.CTk):
         self._cancel_schedule()
         self._running = False
         self.control_panel.set_running(False)
-        self._simulator.reset()
+        self.control_panel.set_manual_inputs_enabled(True)
+        self._validation = ValidationRunState()
+        self._simulator = self._simulator_builder(
+            self._integrator_method, None
+        )
+        self.control_panel.set_validation_status(
+            "No validation window loaded."
+        )
         self._refresh_view()
         self._set_status("Simulation reset.")
 
@@ -147,10 +223,21 @@ class DigitalTwinApp(ctk.CTk):
         self._cancel_schedule()
         self._running = False
         self.control_panel.set_running(False)
+        self.control_panel.set_manual_inputs_enabled(True)
         self._integrator_method = selected_method
-        self._simulator = self._simulator_builder(selected_method)
+        if self._validation.loaded:
+            self._simulator = self._simulator_builder(
+                selected_method,
+                self._validation.initial_glucose_mmol_l,
+            )
+            self._validation.replay_index = 0
+            self._set_status(
+                "Integrator method updated. Validation replay reset."
+            )
+        else:
+            self._simulator = self._simulator_builder(selected_method, None)
+            self._set_status(f"Integrator method set to {selected_method}.")
         self._refresh_view()
-        self._set_status(f"Integrator method set to {selected_method}.")
 
     def _schedule_next_step(self) -> None:
         """Schedule the next simulation tick on the Tk event loop."""
@@ -171,21 +258,48 @@ class DigitalTwinApp(ctk.CTk):
         self._loop_after_id = None
         if not self._running:
             return
+
+        if self._validation.loaded:
+            self._inject_validation_carbs()
+
         self._simulator.step()
         self._refresh_view()
+
+        if self._validation.loaded and self._is_validation_finished():
+            self._running = False
+            self.control_panel.set_running(False)
+            self.control_panel.set_manual_inputs_enabled(True)
+            self._set_status(
+                "Validation run finished at selected end timestamp."
+            )
+            return
+
         self._schedule_next_step()
 
     def _refresh_view(self) -> None:
         """Refresh chart and metric labels from simulator history/state."""
         time, glucose, insulin, _ = self._simulator.get_history_arrays()
-        self.plot_frame.update_plot(time, glucose, insulin)
+        glucose_reference = None
+        carb_reference = None
+        if self._validation.loaded:
+            glucose_reference = self._validation.glucose_reference
+            carb_reference = self._validation.carb_reference
+        self.plot_frame.update_plot(
+            time,
+            glucose,
+            insulin,
+            actual_glucose_reference=glucose_reference,
+            carb_reference=carb_reference,
+        )
 
         state = self._simulator.current_state
+        mode = "validation" if self._validation.loaded else "manual"
         metrics_text = (
             f"t={state.time_minutes:.0f} min    "
             f"G={state.glucose:.2f} mmol/L    "
             f"I={state.insulin:.2f} uU/mL    "
-            f"rate={state.insulin_rate:.2f}"
+            f"rate={state.insulin_rate:.2f}    "
+            f"mode={mode}"
         )
         self.metrics_label.configure(text=metrics_text)
 
@@ -197,3 +311,134 @@ class DigitalTwinApp(ctk.CTk):
         """Ensure scheduled callbacks are canceled before app closes."""
         self._cancel_schedule()
         self.destroy()
+
+    def _setup_validation_data(self) -> None:
+        """Initialize benchmark loader and validation selectors."""
+        csv_path = (
+            Path(__file__).resolve().parents[2]
+            / "data"
+            / "GlucoBench_benchmark_dataset.csv"
+        )
+        try:
+            self._benchmark_loader = GlucoBenchLoader(csv_path)
+            user_ids = self._benchmark_loader.get_user_ids()
+        except (FileNotFoundError, ValueError) as exc:
+            self.control_panel.set_validation_controls_enabled(False)
+            self.control_panel.set_validation_status(
+                f"Validation unavailable: {exc}"
+            )
+            self._set_status("Validation data unavailable.")
+            return
+
+        self.control_panel.set_validation_controls_enabled(True)
+        self.control_panel.set_validation_users(user_ids)
+        self.control_panel.set_validation_status(
+            "Choose user and days, then preload validation."
+        )
+
+    def _on_validation_user_change(self, user_id: str) -> None:
+        """Update day dropdowns when selected user changes."""
+        if self._benchmark_loader is None or user_id == "No data":
+            return
+
+        try:
+            days = self._benchmark_loader.get_user_days(user_id)
+            self.control_panel.set_validation_days(days)
+            self.control_panel.set_validation_status(
+                f"Loaded days for user {user_id}."
+            )
+        except ValueError as exc:
+            self._set_status(str(exc))
+
+    def _on_validation_start_change(self, start_day: str) -> None:
+        """Constrain end-day options from selected start day."""
+        if self._benchmark_loader is None or start_day == "No data":
+            return
+        user_id, _, _ = self.control_panel.get_validation_selection()
+        try:
+            valid_end_days = self._benchmark_loader.get_valid_end_days(
+                user_id,
+                start_day,
+            )
+            self.control_panel.set_validation_end_days(valid_end_days)
+        except ValueError as exc:
+            self._set_status(str(exc))
+
+    def _on_validation_end_change(self, end_timestamp: str) -> None:
+        """Handle end timestamp selection changes."""
+        del end_timestamp
+
+    def _on_validation_preload(self) -> None:
+        """Preload selected benchmark window and seed simulator state."""
+        if self._benchmark_loader is None:
+            self._set_status("Validation data unavailable.")
+            return
+
+        user_id, start_day, end_day = (
+            self.control_panel.get_validation_selection()
+        )
+        if "No data" in {user_id, start_day, end_day}:
+            self._set_status("Select user, start day, and end day first.")
+            return
+
+        try:
+            window = self._benchmark_loader.build_validation_window_for_days(
+                user_id,
+                start_day,
+                end_day,
+            )
+        except ValueError as exc:
+            self._set_status(str(exc))
+            self.control_panel.set_validation_status(f"Preload failed: {exc}")
+            return
+
+        self._cancel_schedule()
+        self._running = False
+        self.control_panel.set_running(False)
+        self.control_panel.set_manual_inputs_enabled(True)
+
+        self._validation = ValidationRunState.from_window(window)
+        self._simulator = self._simulator_builder(
+            self._integrator_method,
+            window.initial_glucose_mmol_l,
+        )
+        self._refresh_view()
+
+        self.control_panel.set_validation_status(
+            "Preloaded user "
+            f"{window.user_id}: {window.start_timestamp} to "
+            f"{window.end_timestamp}."
+        )
+        self._set_status("Validation window preloaded.")
+
+    def _on_validation_run(self) -> None:
+        """Start validation mode with currently preloaded window."""
+        if not self._validation.loaded:
+            self._set_status("Preload a validation window before running.")
+            return
+        if self._running:
+            self._set_status("Simulation already running.")
+            return
+        self._toggle_run()
+
+    def _inject_validation_carbs(self) -> None:
+        """Queue due carb events for current validation simulation time."""
+        if self._validation.carb_replay_events is None:
+            return
+
+        current_time = self._simulator.current_state.time_minutes
+        due_carbs, next_index = collect_due_carb_events(
+            self._validation.carb_replay_events,
+            self._validation.replay_index,
+            current_time,
+        )
+        for carbs in due_carbs:
+            self._simulator.queue_meal(carbs)
+        self._validation.replay_index = next_index
+
+    def _is_validation_finished(self) -> bool:
+        """Check if selected validation time window has been fully replayed."""
+        return (
+            self._simulator.current_state.time_minutes
+            >= self._validation.duration_minutes
+        )

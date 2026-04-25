@@ -21,6 +21,7 @@ def _ensure_project_root_on_sys_path() -> None:
 
 def build_simulator(
     integrator_method: IntegratorMethod = "RK45",
+    initial_glucose_mmol_l: float | None = None,
 ) -> "GlucoseSimulator":
     """Build simulator dependencies with validated configuration."""
     _ensure_project_root_on_sys_path()
@@ -35,11 +36,17 @@ def build_simulator(
     from src.core.state import SimulationState
 
     model_config = ModelConfig()
+    glucose_start = model_config.glucose_basal
+    if initial_glucose_mmol_l is not None:
+        if initial_glucose_mmol_l <= 0.0:
+            raise ValueError("initial_glucose_mmol_l must be positive")
+        glucose_start = initial_glucose_mmol_l
+
     controller_config = ControllerConfig()
     integrator_config = IntegratorConfig(method=integrator_method)
     initial_state = SimulationState(
         time_minutes=0.0,
-        glucose=model_config.glucose_basal,
+        glucose=glucose_start,
         insulin=model_config.insulin_basal,
         carb_pool=0.0,
         insulin_rate=0.0,

@@ -41,6 +41,8 @@ Typical use:
 ## 5. Interactions with Other Entities
 Current interactions:
 - Humans: GUI user provides meal/sport events and run controls
+- Validation users: GUI can preload GlucoBench windows (user/start/end)
+  and replay carbohydrate events from dataset timestamps
 - Machines/Libraries: SciPy ODE solver (`solve_ivp`), plotting/UI stack
 - Databases/Sensors/Protocols: not connected in V1
 
@@ -59,6 +61,10 @@ Current interactions:
   - Queue meal: `queue_meal(carbs)`
   - Queue sport: `queue_sport(multiplier, duration_minutes)`
   - Runtime controls: step/reset (and loop start/stop in GUI layer)
+  - Validation preload controls:
+    - Select user and inclusive start/end timestamp window
+    - Preload actual glucose and carbohydrate references
+    - Run validation through same non-blocking Tk loop
 - History output for plotting:
   `get_history_arrays()`
 
@@ -97,6 +103,11 @@ sequenceDiagram
 - Stop/Pause: handled by GUI stop of scheduling loop
 - Step: `GlucoseSimulator.step()`
 - Reset to initial conditions: `GlucoseSimulator.reset()`
+- Validation mode:
+  - Seeds initial simulated glucose from first selected actual value
+  - Replays only carbohydrate events as queued meal events
+  - Ignores sport and other exogenous benchmark signals
+  - Auto-stops at selected end timestamp span
 
 ### Not implemented in V1
 - Save/load simulation snapshots
@@ -109,6 +120,8 @@ Engine characteristics:
   2. Compute controller insulin rate
   3. Integrate continuous physiology
   4. Store immutable snapshot in history
+- Validation orchestration keeps the same deterministic order by queuing
+  due carbs before each `step()` call in the GUI loop.
 - Solver: `scipy.integrate.solve_ivp` (RK45/DOP853/BDF supported)
 - Time step: fixed logical step width `dt_minutes` per simulator step
 - Zero-crossing/event functions: possible via `IntegratorConfig.events`,

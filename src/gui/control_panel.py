@@ -16,6 +16,11 @@ class ControlPanel(ctk.CTkFrame):
         on_method_change: Callable[[str], None],
         on_toggle_run: Callable[[], None],
         on_reset: Callable[[], None],
+        on_validation_user_change: Callable[[str], None],
+        on_validation_start_change: Callable[[str], None],
+        on_validation_end_change: Callable[[str], None],
+        on_validation_preload: Callable[[], None],
+        on_validation_run: Callable[[], None],
         on_error: Callable[[str], None],
     ) -> None:
         """Build a compact control panel with typed callback hooks."""
@@ -25,10 +30,20 @@ class ControlPanel(ctk.CTkFrame):
         self._on_method_change = on_method_change
         self._on_toggle_run = on_toggle_run
         self._on_reset = on_reset
+        self._on_validation_user_change = on_validation_user_change
+        self._on_validation_start_change = on_validation_start_change
+        self._on_validation_end_change = on_validation_end_change
+        self._on_validation_preload = on_validation_preload
+        self._on_validation_run = on_validation_run
         self._on_error = on_error
 
         self.grid_columnconfigure(0, weight=1)
+        self._build_meal_and_sport_controls()
+        self._build_runtime_controls()
+        self._build_validation_controls()
 
+    def _build_meal_and_sport_controls(self) -> None:
+        """Create manual meal and sport input widgets."""
         ctk.CTkLabel(self, text="Meal (carbs in g)").grid(
             row=0, column=0, sticky="w", padx=12, pady=(12, 4)
         )
@@ -74,6 +89,8 @@ class ControlPanel(ctk.CTkFrame):
             row=7, column=0, sticky="ew", padx=12, pady=(0, 14)
         )
 
+    def _build_runtime_controls(self) -> None:
+        """Create runtime controls shared by manual and validation modes."""
         ctk.CTkLabel(self, text="Integrator method").grid(
             row=8, column=0, sticky="w", padx=12, pady=(0, 4)
         )
@@ -107,9 +124,182 @@ class ControlPanel(ctk.CTkFrame):
             row=11, column=0, sticky="ew", padx=12, pady=(0, 12)
         )
 
+    def _build_validation_controls(self) -> None:
+        """Create GlucoBench validation card and selectors."""
+        self.validation_frame = ctk.CTkFrame(self)
+        self.validation_frame.grid(
+            row=12,
+            column=0,
+            sticky="ew",
+            padx=12,
+            pady=(0, 12),
+        )
+        self.validation_frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            self.validation_frame,
+            text="Validation (GlucoBench)",
+            font=ctk.CTkFont(weight="bold"),
+        ).grid(row=0, column=0, sticky="w", padx=8, pady=(8, 4))
+
+        ctk.CTkLabel(self.validation_frame, text="User ID").grid(
+            row=1, column=0, sticky="w", padx=8, pady=(0, 4)
+        )
+        self.validation_user_menu = ctk.CTkOptionMenu(
+            self.validation_frame,
+            values=["No data"],
+            command=self._handle_validation_user_change,
+        )
+        self.validation_user_menu.set("No data")
+        self.validation_user_menu.grid(
+            row=2, column=0, sticky="ew", padx=8, pady=(0, 8)
+        )
+
+        ctk.CTkLabel(self.validation_frame, text="Start day").grid(
+            row=3, column=0, sticky="w", padx=8, pady=(0, 4)
+        )
+        self.validation_start_menu = ctk.CTkOptionMenu(
+            self.validation_frame,
+            values=["No data"],
+            command=self._handle_validation_start_change,
+        )
+        self.validation_start_menu.set("No data")
+        self.validation_start_menu.grid(
+            row=4, column=0, sticky="ew", padx=8, pady=(0, 8)
+        )
+
+        ctk.CTkLabel(self.validation_frame, text="End day").grid(
+            row=5, column=0, sticky="w", padx=8, pady=(0, 4)
+        )
+        self.validation_end_menu = ctk.CTkOptionMenu(
+            self.validation_frame,
+            values=["No data"],
+            command=self._handle_validation_end_change,
+        )
+        self.validation_end_menu.set("No data")
+        self.validation_end_menu.grid(
+            row=6, column=0, sticky="ew", padx=8, pady=(0, 8)
+        )
+
+        self.validation_preload_button = ctk.CTkButton(
+            self.validation_frame,
+            text="Preload Validation",
+            command=self._on_validation_preload,
+        )
+        self.validation_preload_button.grid(
+            row=7, column=0, sticky="ew", padx=8, pady=(0, 8)
+        )
+
+        self.validation_run_button = ctk.CTkButton(
+            self.validation_frame,
+            text="Run Validation",
+            command=self._on_validation_run,
+        )
+        self.validation_run_button.grid(
+            row=8, column=0, sticky="ew", padx=8, pady=(0, 8)
+        )
+
+        self.validation_status_label = ctk.CTkLabel(
+            self.validation_frame,
+            text="No validation window loaded.",
+            anchor="w",
+            justify="left",
+            wraplength=260,
+        )
+        self.validation_status_label.grid(
+            row=9, column=0, sticky="ew", padx=8, pady=(0, 8)
+        )
+
+    def set_validation_users(self, user_ids: list[str]) -> None:
+        """Populate user selector and trigger dependent refresh."""
+        if not user_ids:
+            self.validation_user_menu.configure(values=["No data"])
+            self.validation_user_menu.set("No data")
+            self.set_validation_days([])
+            return
+
+        self.validation_user_menu.configure(values=user_ids)
+        self.validation_user_menu.set(user_ids[0])
+        self._on_validation_user_change(user_ids[0])
+
+    def set_validation_days(self, days: list[str]) -> None:
+        """Populate both start and end menus from one day list."""
+        if not days:
+            self.validation_start_menu.configure(values=["No data"])
+            self.validation_end_menu.configure(values=["No data"])
+            self.validation_start_menu.set("No data")
+            self.validation_end_menu.set("No data")
+            return
+
+        self.validation_start_menu.configure(values=days)
+        self.validation_end_menu.configure(values=days)
+        self.validation_start_menu.set(days[0])
+        self.validation_end_menu.set(days[-1])
+        self._on_validation_start_change(days[0])
+        self._on_validation_end_change(days[-1])
+
+    def set_validation_end_days(self, days: list[str]) -> None:
+        """Update end-day selector while preserving current value."""
+        if not days:
+            self.validation_end_menu.configure(values=["No data"])
+            self.validation_end_menu.set("No data")
+            self._on_validation_end_change("No data")
+            return
+
+        current_end = self.validation_end_menu.get()
+        self.validation_end_menu.configure(values=days)
+        if current_end in days:
+            selected_end = current_end
+        else:
+            selected_end = days[-1]
+        self.validation_end_menu.set(selected_end)
+        self._on_validation_end_change(selected_end)
+
+    def set_validation_status(self, message: str) -> None:
+        """Display a short validation status string in the card."""
+        self.validation_status_label.configure(text=message)
+
+    def set_validation_controls_enabled(self, enabled: bool) -> None:
+        """Enable or disable all validation widgets as a group."""
+        state = "normal" if enabled else "disabled"
+        self.validation_user_menu.configure(state=state)
+        self.validation_start_menu.configure(state=state)
+        self.validation_end_menu.configure(state=state)
+        self.validation_preload_button.configure(state=state)
+        self.validation_run_button.configure(state=state)
+
+    def set_manual_inputs_enabled(self, enabled: bool) -> None:
+        """Enable or disable meal and sport controls during validation."""
+        state = "normal" if enabled else "disabled"
+        self.meal_entry.configure(state=state)
+        self.meal_button.configure(state=state)
+        self.sport_multiplier_entry.configure(state=state)
+        self.sport_duration_entry.configure(state=state)
+        self.sport_button.configure(state=state)
+
     def set_running(self, running: bool) -> None:
         """Update run button label to reflect simulation state."""
         self.run_button.configure(text="Pause" if running else "Run")
+
+    def get_validation_selection(self) -> tuple[str, str, str]:
+        """Return selected user/start/end values from validation controls."""
+        return (
+            self.validation_user_menu.get(),
+            self.validation_start_menu.get(),
+            self.validation_end_menu.get(),
+        )
+
+    def _handle_validation_user_change(self, selected_user: str) -> None:
+        """Dispatch user selector callback."""
+        self._on_validation_user_change(selected_user)
+
+    def _handle_validation_start_change(self, selected_start: str) -> None:
+        """Dispatch start selector callback."""
+        self._on_validation_start_change(selected_start)
+
+    def _handle_validation_end_change(self, selected_end: str) -> None:
+        """Dispatch end selector callback."""
+        self._on_validation_end_change(selected_end)
 
     def _handle_meal(self) -> None:
         """Parse and dispatch meal input from entry widget."""

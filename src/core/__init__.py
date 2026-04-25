@@ -1,5 +1,7 @@
 """Core simulation package exports."""
 
+from src.core.benchmark_loader import GlucoBenchLoader
+from src.core.benchmark_loader import ValidationWindowData
 from src.core.controller import ProportionalController
 from src.core.integrator import SolveIvPIntegrator
 from src.core.model import PhysiologyModel
@@ -14,6 +16,7 @@ from src.core.state import SportEvent
 
 __all__ = [
     "ControllerConfig",
+    "GlucoBenchLoader",
     "GlucoseSimulator",
     "IntegratorConfig",
     "ModelConfig",
@@ -24,4 +27,5 @@ __all__ = [
     "SimulationSnapshot",
     "SimulationState",
     "SportEvent",
+    "ValidationWindowData",
 ]
