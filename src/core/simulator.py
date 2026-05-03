@@ -88,7 +88,7 @@ class GlucoseSimulator:
         """Execute one deterministic step of the simulation pipeline."""
         self._apply_pending_events()
         self._state.insulin_rate = self._controller.compute_insulin_rate(
-            glucose=self._state.glucose,
+            glucose=self._state.interstitium,
             current_rate=self._state.insulin_rate,
             config=self._controller_config,
         )
@@ -130,6 +130,7 @@ class GlucoseSimulator:
             time_minutes=state.time_minutes,
             glucose=state.glucose,
             insulin=state.insulin,
+            interstitium=state.interstitium,
             insulin_rate=state.insulin_rate,
             carb_pool=state.carb_pool,
             sport_multiplier=state.sport_multiplier,

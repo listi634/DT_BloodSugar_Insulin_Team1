@@ -50,7 +50,9 @@ Current interactions:
 
 ### Internal interfaces (sub-model integration)
 - `GlucoseSimulator` -> `ProportionalController`:
-  `compute_insulin_rate(glucose, current_rate, config)`
+  `compute_insulin_rate(glucose, current_rate, config)` — **Note**: The
+  `glucose` parameter receives the interstitial glucose signal, not plasma
+  glucose.
 - `GlucoseSimulator` -> `PhysiologyModel`:
   `integrate(state, model_config)`
 - `PhysiologyModel` -> `SolveIvPIntegrator`:
@@ -81,7 +83,7 @@ sequenceDiagram
     GUI->>Sim: queue_meal / queue_sport
     GUI->>Sim: step()
     Sim->>Sim: apply_pending_events()
-    Sim->>Ctrl: compute_insulin_rate(...)
+    Sim->>Ctrl: compute_insulin_rate(interstitium, ...)
     Ctrl-->>Sim: insulin_rate
     Sim->>Model: integrate(state, config)
     Model->>Int: integrate_step(...)
@@ -134,7 +136,8 @@ $$
 \begin{bmatrix}
 G_k \\
 I_k \\
-C_k
+C_k \\
+G_{\mathrm{int},k}
 \end{bmatrix},
 \qquad
 \mathbf{y}_k =
@@ -142,6 +145,7 @@ C_k
 t_k \\
 G_k \\
 I_k \\
+G_{\mathrm{int},k} \\
 u_{I,k}
 \end{bmatrix}
 $$

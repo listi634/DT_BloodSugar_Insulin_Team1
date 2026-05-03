@@ -49,6 +49,7 @@ def build_simulator(
         glucose=glucose_start,
         insulin=model_config.insulin_basal,
         carb_pool=0.0,
+        interstitium=glucose_start,
         insulin_rate=0.0,
         sport_multiplier=1.0,
         sport_minutes_remaining=0.0,

@@ -46,6 +46,7 @@ class PhysiologyModel:
         glucose = float(values[0])
         insulin = float(values[1])
         carb_pool = float(values[2])
+        interstitium = float(values[3])
 
         insulin_effect = max(0.0, insulin - config.insulin_basal)
         glucose_effect = max(0.0, glucose - config.glucose_basal)
@@ -66,7 +67,15 @@ class PhysiologyModel:
         )
 
         d_carb_pool = -config.meal_absorption_rate * carb_pool
-        return np.array([d_glucose, d_insulin, d_carb_pool], dtype=float)
+
+        d_interstitium = (
+            glucose - interstitium
+        ) / config.interstitium_tau_minutes
+
+        return np.array(
+            [d_glucose, d_insulin, d_carb_pool, d_interstitium],
+            dtype=float,
+        )
 
     def integrate(
         self, state: SimulationState, config: ModelConfig
@@ -87,6 +96,8 @@ class PhysiologyModel:
             raise ValueError("state.insulin must be non-negative")
         if state.carb_pool < 0.0:
             raise ValueError("state.carb_pool must be non-negative")
+        if state.interstitium < 0.0:
+            raise ValueError("state.interstitium must be non-negative")
         if state.insulin_rate < 0.0:
             raise ValueError("state.insulin_rate must be non-negative")
         if state.sport_multiplier < 1.0:
@@ -103,7 +114,12 @@ class PhysiologyModel:
             sensitivity_multiplier = state.sport_multiplier
 
         initial_values = np.array(
-            [state.glucose, state.insulin, state.carb_pool],
+            [
+                state.glucose,
+                state.insulin,
+                state.carb_pool,
+                state.interstitium,
+            ],
             dtype=float,
         )
         next_values, _ = self._integrator.integrate_step(
@@ -131,6 +147,11 @@ class PhysiologyModel:
             config.max_insulin,
         )
         next_carb_pool = max(0.0, float(next_values[2]))
+        next_interstitium = _clamp(
+            float(next_values[3]),
+            config.min_glucose,
+            config.max_glucose,
+        )
 
         next_sport_remaining = max(
             0.0,
@@ -145,6 +166,7 @@ class PhysiologyModel:
             glucose=next_glucose,
             insulin=next_insulin,
             carb_pool=next_carb_pool,
+            interstitium=next_interstitium,
             insulin_rate=state.insulin_rate,
             sport_multiplier=next_sport_multiplier,
             sport_minutes_remaining=next_sport_remaining,

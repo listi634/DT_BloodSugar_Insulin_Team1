@@ -2,11 +2,12 @@
 
 ## 1. Short Description of the System
 The implemented system is a low-order physiological digital twin for
-blood glucose and insulin dynamics. It models three coupled continuous
+blood glucose and insulin dynamics. It models four coupled continuous
 states:
-- Glucose concentration in blood
+- Plasma glucose concentration in blood
 - Effective insulin level
 - Carbohydrate pool (meal absorption reservoir)
+- Interstitial glucose (the sensor signal for the controller)
 
 The model is integrated in continuous time over fixed simulation steps
 using `scipy.integrate.solve_ivp`, with safety bounds applied to
@@ -38,8 +39,9 @@ Control and known external inputs that influence dynamics:
 
 ### Outputs `y`
 Measurable or exposed outputs:
-- `glucose`
+- `glucose` (plasma glucose)
 - `insulin`
+- `interstitium` (interstitial glucose, the control signal)
 - `insulin_rate`
 - `time_minutes`
 - Optional: `carb_pool`, sport-related values for diagnostics
@@ -51,6 +53,8 @@ Slowly changing/constant model parameters (`ModelConfig`):
 - Dynamics: `glucose_decay`, `insulin_decay`
 - Couplings: `insulin_sensitivity`, `insulin_response_gain`
 - Meal dynamics: `meal_absorption_rate`, `carb_to_glucose_gain`
+- Interstitium dynamics: `interstitium_tau_minutes` (time constant for
+  sensor dynamics)
 - Safety clamps: `min_glucose`, `max_glucose`, `min_insulin`,
   `max_insulin`
 
@@ -62,7 +66,8 @@ $$
 \begin{bmatrix}
 G \\
 I \\
-C
+C \\
+G_{\mathrm{int}}
 \end{bmatrix}
 $$
 
@@ -115,9 +120,10 @@ Let:
 
 $$
 \begin{aligned}
-G &:= \text{glucose}, \\
+G &:= \text{plasma glucose}, \\
 I &:= \text{insulin}, \\
 C &:= \text{carbohydrate pool}, \\
+G_{\mathrm{int}} &:= \text{interstitial glucose (CGM signal)}, \\
 u_I &:= \text{commanded insulin rate}, \\
 s &:= \text{effective sport sensitivity multiplier},\; s \ge 1
 \end{aligned}
@@ -137,6 +143,10 @@ $$
 \frac{dC}{dt} = -k_a\,C
 $$
 
+$$
+\frac{dG_{\mathrm{int}}}{dt} = \frac{G - G_{\mathrm{int}}}{\tau}
+$$
+
 with parameter mapping:
 
 $$
@@ -148,7 +158,8 @@ k_r &= \texttt{insulin\_response\_gain}, \\
 k_a &= \texttt{meal\_absorption\_rate}, &
 k_c &= \texttt{carb\_to\_glucose\_gain}, \\
 G_b &= \texttt{glucose\_basal}, &
-I_b &= \texttt{insulin\_basal}
+I_b &= \texttt{insulin\_basal}, \\
+\tau &= \texttt{interstitium\_tau\_minutes} &
 \end{aligned}
 $$
 
