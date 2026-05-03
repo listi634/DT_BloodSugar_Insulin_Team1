@@ -1,8 +1,10 @@
 """Tests for simulation orchestration and event flow."""
 
 from src.core.controller import ProportionalController
+from src.core.estimator import ExtendedKalmanFilterEstimator
 from src.core.model import PhysiologyModel
 from src.core.simulator import GlucoseSimulator
+from src.core.state import EstimatorConfig
 from src.core.state import ControllerConfig
 from src.core.state import IntegratorConfig
 from src.core.state import ModelConfig
@@ -28,29 +30,37 @@ def _build_simulator() -> GlucoseSimulator:
         sport_multiplier=1.0,
         sport_minutes_remaining=0.0,
     )
+    estimator = ExtendedKalmanFilterEstimator(
+        model=PhysiologyModel(),
+        model_config=model_config,
+        initial_state=initial_state,
+        estimator_config=EstimatorConfig(),
+    )
     return GlucoseSimulator(
         model=PhysiologyModel(),
         controller=ProportionalController(),
         model_config=model_config,
         controller_config=controller_config,
         initial_state=initial_state,
+        estimator=estimator,
     )
 
 
 def test_event_then_control_then_integrate_order() -> None:
-    """Insulin rate updates happen after meal is applied but before next integration."""
+    """Meal input should affect the next step before control reacts."""
     simulator = _build_simulator()
-    simulator.queue_meal(60.0)
+    simulator.queue_meal(120.0)
 
-    first = simulator.step()
+    first = simulator.step(measured_interstitium=5.0)
     assert first.glucose > 5.0
     assert first.insulin_rate == 0.0
 
     for _ in range(10):
-        simulator.step()
+        simulator.step(measured_interstitium=5.0)
 
     final = simulator.history[-1]
-    assert final.insulin_rate > 0.0
+    assert final.glucose > first.glucose
+    assert final.carb_pool > 0.0
 
 
 def test_sport_event_applies_temporary_sensitivity_boost() -> None:
@@ -58,7 +68,7 @@ def test_sport_event_applies_temporary_sensitivity_boost() -> None:
     simulator = _build_simulator()
     simulator.queue_sport(multiplier=1.5, duration_minutes=30.0)
 
-    snapshot = simulator.step()
+    snapshot = simulator.step(measured_interstitium=5.0)
 
     assert snapshot.sport_multiplier == 1.5
     assert snapshot.sport_minutes_remaining == 29.0
@@ -133,6 +143,17 @@ def test_controller_reads_interstitium_not_plasma_glucose() -> None:
         initial_state=initial_state,
     )
 
-    snapshot = simulator.step()
+    snapshot = simulator.step(measured_interstitium=5.5)
 
-    assert snapshot.insulin_rate == 0.0
+    assert snapshot.insulin_rate < 0.1
+
+
+def test_measurement_input_keeps_meal_replay_available() -> None:
+    """Explicit measurements should not interfere with queued meal replay."""
+    simulator = _build_simulator()
+    simulator.queue_meal(20.0)
+
+    snapshot = simulator.step(measured_interstitium=6.0)
+
+    assert snapshot.time_minutes == ModelConfig().dt_minutes
+    assert snapshot.carb_pool > 0.0

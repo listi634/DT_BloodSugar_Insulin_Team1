@@ -105,8 +105,10 @@ def test_build_validation_window_converts_and_extracts_carbs(
         (5.0, pytest.approx(162 / MGDL_PER_MMOLL)),
         (15.0, pytest.approx(180 / MGDL_PER_MMOLL)),
     ]
+    assert window.measurement_reference == window.glucose_reference
     assert window.carb_reference == [(5.0, 25.0)]
     assert window.carb_replay_events == [(5.0, 25.0)]
+    assert window.insulin_reference == []
 
 
 def test_build_validation_window_rejects_invalid_inputs(

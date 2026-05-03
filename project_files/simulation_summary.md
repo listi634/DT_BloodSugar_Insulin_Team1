@@ -1,10 +1,10 @@
 # Digital Twin Simulation Summary
 
 ## 1. Purpose of the Simulation Model
-The simulation coordinates user disturbances, control decisions, and
-physiology integration in a deterministic step loop. It provides a
-reproducible runtime for studying glucose-insulin behavior and control
-responses under meal and sport events.
+The simulation coordinates user disturbances, measurement assimilation,
+control decisions, and physiology prediction in a deterministic step
+loop. It provides a reproducible runtime for studying glucose-insulin
+behavior and control responses under meal and sport events.
 
 Primary goals:
 - Execute a deterministic update pipeline every step
@@ -17,6 +17,8 @@ Expected outputs:
 - Observable response to meals (glucose rise) and sport (increased
   sensitivity)
 - Automated controller compensation after disturbances
+- Moderate single-meal excursions that remain below the hard glucose
+  clamp under the current tuned defaults
 
 Typical use:
 - Demonstration of closed-loop behavior
@@ -42,19 +44,24 @@ Typical use:
 Current interactions:
 - Humans: GUI user provides meal/sport events and run controls
 - Validation users: GUI can preload GlucoBench windows (user/start/end)
-  and replay carbohydrate events from dataset timestamps
-- Machines/Libraries: SciPy ODE solver (`solve_ivp`), plotting/UI stack
+  and replay carbohydrate events plus glucose measurements from dataset
+  timestamps
+- Machines/Libraries: SciPy ODE solver (`solve_ivp`), plotting/UI stack,
+  EKF-based estimator scaffold
 - Databases/Sensors/Protocols: not connected in V1
 
 ## 6. Model Interfaces
 
 ### Internal interfaces (sub-model integration)
+- `GlucoseSimulator` -> `ExtendedKalmanFilterEstimator`:
+  `predict(dt_minutes, control_input)` and `update(measured_interstitium)`
+  for interstitial glucose correction.
 - `GlucoseSimulator` -> `ProportionalController`:
   `compute_insulin_rate(glucose, current_rate, config)` — **Note**: The
-  `glucose` parameter receives the interstitial glucose signal, not plasma
-  glucose.
-- `GlucoseSimulator` -> `PhysiologyModel`:
-  `integrate(state, model_config)`
+  `glucose` parameter receives the corrected interstitial estimate, not
+  plasma glucose.
+- `ExtendedKalmanFilterEstimator` -> `PhysiologyModel`:
+  `integrate(state, model_config)` for process-model propagation.
 - `PhysiologyModel` -> `SolveIvPIntegrator`:
   `integrate_step(derivative, y0, t0, dt, config)`
 
@@ -107,7 +114,9 @@ sequenceDiagram
 - Reset to initial conditions: `GlucoseSimulator.reset()`
 - Validation mode:
   - Seeds initial simulated glucose from first selected actual value
-  - Replays only carbohydrate events as queued meal events
+  - Replays carbohydrate events as queued meal events
+  - Feeds the window glucose series into the estimator as a measurement
+    reference
   - Ignores sport and other exogenous benchmark signals
   - Auto-stops at selected end timestamp span
 
@@ -115,15 +124,21 @@ sequenceDiagram
 - Save/load simulation snapshots
 - Replay/rewind timeline controls
 
+The validation replay path treats benchmark glucose values as
+measurement inputs for the estimator and overlays the same reference in
+the plot. It does not overwrite the simulated glucose state directly.
+
 ## 8. Simulation Engine
 Engine characteristics:
 - Deterministic step order:
   1. Apply pending user events
-  2. Compute controller insulin rate
-  3. Integrate continuous physiology
-  4. Store immutable snapshot in history
+  2. Propagate the EKF prediction using the previous control input
+  3. Correct the estimate with the current measurement reference
+  4. Compute controller insulin rate from the corrected estimate
+  5. Store the corrected estimate in history
 - Validation orchestration keeps the same deterministic order by queuing
-  due carbs before each `step()` call in the GUI loop.
+  due carbs and due measurements before each `step()` call in the GUI
+  loop.
 - Solver: `scipy.integrate.solve_ivp` (RK45/DOP853/BDF supported)
 - Time step: fixed logical step width `dt_minutes` per simulator step
 - Zero-crossing/event functions: possible via `IntegratorConfig.events`,
@@ -153,9 +168,9 @@ $$
 ```mermaid
 flowchart TD
   A[Simulation Step] --> B[Apply Pending Events]
-  B --> C[Compute Insulin Rate]
-  C --> D[Integrate ODE over dt]
-  D --> E[Clamp Physiological Bounds]
+  B --> C[EKF Predict]
+  C --> D[EKF Update]
+  D --> E[Compute Insulin Rate]
   E --> F[Append Snapshot to History]
 ```
 

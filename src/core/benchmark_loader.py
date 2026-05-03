@@ -21,6 +21,7 @@ class BenchmarkRow:
     timestamp: datetime
     glucose_mmol_l: float
     carbs_grams: float
+    insulin_bolus_units: float
 
 
 @dataclass(frozen=True)
@@ -33,8 +34,10 @@ class ValidationWindowData:
     initial_glucose_mmol_l: float
     duration_minutes: float
     glucose_reference: list[tuple[float, float]]
+    measurement_reference: list[tuple[float, float]]
     carb_reference: list[tuple[float, float]]
     carb_replay_events: list[tuple[float, float]]
+    insulin_reference: list[tuple[float, float]]
 
 
 class GlucoBenchLoader:
@@ -181,15 +184,24 @@ class GlucoBenchLoader:
             raise ValueError("Selected timestamp window contains no rows")
 
         glucose_reference: list[tuple[float, float]] = []
+        measurement_reference: list[tuple[float, float]] = []
         carb_reference: list[tuple[float, float]] = []
         carb_replay_events: list[tuple[float, float]] = []
+        insulin_reference: list[tuple[float, float]] = []
         for row in window_rows:
             elapsed_minutes = (row.timestamp - start_dt).total_seconds() / 60.0
-            glucose_reference.append((elapsed_minutes, row.glucose_mmol_l))
+            reference_point = (elapsed_minutes, row.glucose_mmol_l)
+            glucose_reference.append(reference_point)
+            measurement_reference.append(reference_point)
             if row.carbs_grams > 0.0:
                 carb_point = (elapsed_minutes, row.carbs_grams)
                 carb_reference.append(carb_point)
                 carb_replay_events.append(carb_point)
+            insulin_bolus_units = row.insulin_bolus_units
+            if insulin_bolus_units > 0.0:
+                insulin_reference.append(
+                    (elapsed_minutes, row.insulin_bolus_units)
+                )
 
         return ValidationWindowData(
             user_id=user_id,
@@ -198,8 +210,10 @@ class GlucoBenchLoader:
             initial_glucose_mmol_l=glucose_reference[0][1],
             duration_minutes=(end_dt - start_dt).total_seconds() / 60.0,
             glucose_reference=glucose_reference,
+            measurement_reference=measurement_reference,
             carb_reference=carb_reference,
             carb_replay_events=carb_replay_events,
+            insulin_reference=insulin_reference,
         )
 
     def _get_rows_for_user(self, user_id: str) -> list[BenchmarkRow]:
@@ -265,6 +279,11 @@ class GlucoBenchLoader:
                         timestamp=timestamp,
                         glucose_mmol_l=glucose_mg_dl / MGDL_PER_MMOLL,
                         carbs_grams=carbs_grams,
+                        insulin_bolus_units=cls._parse_float(
+                            row.get("insulin_bolus"),
+                            field_name="insulin_bolus",
+                            line_number=line_number,
+                        ),
                     )
                 )
         return parsed_rows

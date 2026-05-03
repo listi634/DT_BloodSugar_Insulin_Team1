@@ -9,7 +9,7 @@ from src.core.state import SimulationState
 
 
 def test_meal_carb_pool_increases_glucose() -> None:
-    """A non-zero carb pool should push glucose above basal."""
+    """A non-zero carb pool should raise glucose without immediate clipping."""
     model = PhysiologyModel()
     config = ModelConfig()
     state = SimulationState(
@@ -26,6 +26,7 @@ def test_meal_carb_pool_increases_glucose() -> None:
     next_state = model.integrate(state, config)
 
     assert next_state.glucose > config.glucose_basal
+    assert next_state.glucose < 6.0
 
 
 def test_high_glucose_triggers_endogenous_insulin_response() -> None:

@@ -11,6 +11,7 @@ from src.core.benchmark_loader import GlucoBenchLoader
 from src.core.benchmark_loader import ValidationWindowData
 from src.core.simulator import GlucoseSimulator
 from src.core.state import IntegratorMethod
+from src.core.utilities import collect_due_carb_events
 from src.gui.control_panel import ControlPanel
 from src.gui.plot_frame import PlotFrame
 
@@ -26,8 +27,10 @@ class ValidationRunState:
     initial_glucose_mmol_l: float | None = None
     duration_minutes: float = 0.0
     glucose_reference: list[tuple[float, float]] | None = None
+    measurement_reference: list[tuple[float, float]] | None = None
     carb_reference: list[tuple[float, float]] | None = None
     carb_replay_events: list[tuple[float, float]] | None = None
+    measurement_replay_index: int = 0
     replay_index: int = 0
 
     @classmethod
@@ -41,29 +44,31 @@ class ValidationRunState:
             initial_glucose_mmol_l=window.initial_glucose_mmol_l,
             duration_minutes=window.duration_minutes,
             glucose_reference=list(window.glucose_reference),
+            measurement_reference=list(window.measurement_reference),
             carb_reference=list(window.carb_reference),
             carb_replay_events=list(window.carb_replay_events),
+            measurement_replay_index=0,
             replay_index=0,
         )
 
 
-def collect_due_carb_events(
-    carb_events: list[tuple[float, float]],
+def collect_due_measurement(
+    measurement_points: list[tuple[float, float]],
     start_index: int,
     current_time_minutes: float,
-) -> tuple[list[float], int]:
-    """Return carb events due at current step time and next replay index."""
-    due_carbs: list[float] = []
-    replay_index = start_index
+) -> tuple[float | None, int]:
+    """Return the latest measurement due at the current step time."""
+    measurement_index = start_index
+    latest_measurement: float | None = None
     epsilon = 1e-9
-    while replay_index < len(carb_events):
-        event_time, carbs = carb_events[replay_index]
-        if event_time <= current_time_minutes + epsilon:
-            due_carbs.append(carbs)
-            replay_index += 1
+    while measurement_index < len(measurement_points):
+        point_time, value = measurement_points[measurement_index]
+        if point_time <= current_time_minutes + epsilon:
+            latest_measurement = value
+            measurement_index += 1
             continue
         break
-    return due_carbs, replay_index
+    return latest_measurement, measurement_index
 
 
 class DigitalTwinApp(ctk.CTk):
@@ -262,7 +267,11 @@ class DigitalTwinApp(ctk.CTk):
         if self._validation.loaded:
             self._inject_validation_carbs()
 
-        self._simulator.step()
+        measured_interstitium = None
+        if self._validation.loaded:
+            measured_interstitium = self._inject_validation_measurement()
+
+        self._simulator.step(measured_interstitium=measured_interstitium)
         self._refresh_view()
 
         if self._validation.loaded and self._is_validation_finished():
@@ -435,6 +444,20 @@ class DigitalTwinApp(ctk.CTk):
         for carbs in due_carbs:
             self._simulator.queue_meal(carbs)
         self._validation.replay_index = next_index
+
+    def _inject_validation_measurement(self) -> float | None:
+        """Return the latest measurement due for the current tick."""
+        if self._validation.measurement_reference is None:
+            return None
+
+        current_time = self._simulator.current_state.time_minutes
+        measurement, next_index = collect_due_measurement(
+            self._validation.measurement_reference,
+            self._validation.measurement_replay_index,
+            current_time,
+        )
+        self._validation.measurement_replay_index = next_index
+        return measurement
 
     def _is_validation_finished(self) -> bool:
         """Check if selected validation time window has been fully replayed."""

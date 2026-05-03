@@ -1,7 +1,7 @@
 """Unit tests for validation runtime helper functions."""
 
-from src.gui.app import collect_due_carb_events
-from src.gui.plot_frame import sanitize_reference_points
+from src.core.utilities import collect_due_carb_events
+from src.core.utilities import sanitize_reference_points
 
 
 def test_collect_due_carb_events_advances_replay_index() -> None:

@@ -4,7 +4,9 @@ from dataclasses import replace
 
 from src.core.controller import ProportionalController
 from src.core.model import PhysiologyModel
+from src.core.estimator import ExtendedKalmanFilterEstimator
 from src.core.state import ControllerConfig
+from src.core.state import EstimatorConfig
 from src.core.state import IntegratorConfig
 from src.core.state import ModelConfig
 from src.core.state import PendingEvents
@@ -23,6 +25,7 @@ class GlucoseSimulator:
         model_config: ModelConfig,
         controller_config: ControllerConfig,
         initial_state: SimulationState,
+        estimator: ExtendedKalmanFilterEstimator | None = None,
         integrator_config: IntegratorConfig | None = None,
     ) -> None:
         """Create simulator with explicit dependencies and typed state."""
@@ -41,6 +44,12 @@ class GlucoseSimulator:
         self._controller_config = controller_config
         self._initial_state = replace(initial_state)
         self._state = replace(initial_state)
+        self._estimator = estimator or ExtendedKalmanFilterEstimator(
+            model=self._model,
+            model_config=self._model_config,
+            initial_state=self._state,
+            estimator_config=EstimatorConfig(),
+        )
         self._pending = PendingEvents()
         self._history: list[SimulationSnapshot] = [
             self._to_snapshot(self._state)
@@ -81,18 +90,33 @@ class GlucoseSimulator:
     def reset(self) -> None:
         """Reset to initial state and clear pending events/history."""
         self._state = replace(self._initial_state)
+        self._estimator.set_state(self._state)
         self._pending.clear()
         self._history = [self._to_snapshot(self._state)]
 
-    def step(self) -> SimulationSnapshot:
+    def step(
+        self,
+        measured_interstitium: float | None = None,
+    ) -> SimulationSnapshot:
         """Execute one deterministic step of the simulation pipeline."""
         self._apply_pending_events()
+        self._estimator.set_state(self._state)
+        self._estimator.predict(
+            dt_minutes=self._model_config.dt_minutes,
+            control_input=self._state.insulin_rate,
+        )
+        if measured_interstitium is None:
+            measured_interstitium = self._state.interstitium
+        self._estimator.update(measured_interstitium)
+
+        estimate = self._estimator.current_state
         self._state.insulin_rate = self._controller.compute_insulin_rate(
-            glucose=self._state.interstitium,
+            glucose=estimate.interstitium,
             current_rate=self._state.insulin_rate,
             config=self._controller_config,
         )
-        self._state = self._model.integrate(self._state, self._model_config)
+        self._state = replace(estimate, insulin_rate=self._state.insulin_rate)
+        self._estimator.set_state(self._state)
 
         snapshot = self._to_snapshot(self._state)
         self._history.append(snapshot)

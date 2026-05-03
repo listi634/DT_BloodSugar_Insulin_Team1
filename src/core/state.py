@@ -20,8 +20,8 @@ class ModelConfig:
     insulin_decay: float = 0.05
     insulin_sensitivity: float = 0.06
     insulin_response_gain: float = 0.32
-    meal_absorption_rate: float = 0.035
-    carb_to_glucose_gain: float = 0.065
+    meal_absorption_rate: float = 0.045
+    carb_to_glucose_gain: float = 0.0015
     interstitium_tau_minutes: float = 10.0
     min_glucose: float = 2.0
     max_glucose: float = 20.0
@@ -68,6 +68,30 @@ class ControllerConfig:
             raise ValueError("max_insulin_rate must be positive")
         if self.max_rate_delta_per_step <= 0.0:
             raise ValueError("max_rate_delta_per_step must be positive")
+
+
+@dataclass(frozen=True)
+class EstimatorConfig:
+    """Configuration for the EKF state estimator scaffold."""
+
+    initial_covariance: float = 1.0
+    process_noise_scale: float = 0.02
+    measurement_noise_variance: float = 0.09
+    finite_difference_step: float = 1e-4
+    minimum_covariance: float = 1e-6
+
+    def validate(self) -> None:
+        """Validate covariance and noise settings."""
+        if self.initial_covariance <= 0.0:
+            raise ValueError("initial_covariance must be positive")
+        if self.process_noise_scale < 0.0:
+            raise ValueError("process_noise_scale must be non-negative")
+        if self.measurement_noise_variance <= 0.0:
+            raise ValueError("measurement_noise_variance must be positive")
+        if self.finite_difference_step <= 0.0:
+            raise ValueError("finite_difference_step must be positive")
+        if self.minimum_covariance <= 0.0:
+            raise ValueError("minimum_covariance must be positive")
 
 
 @dataclass(frozen=True)

@@ -6,17 +6,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 import customtkinter as ctk
 
-
-def sanitize_reference_points(
-    points: Sequence[tuple[float, float]] | None,
-) -> list[tuple[float, float]]:
-    """Return reference points sorted by time with safe empty handling."""
-    if points is None:
-        return []
-    return sorted(
-        [(float(time), float(value)) for time, value in points],
-        key=lambda item: item[0],
-    )
+from src.core.utilities import sanitize_reference_points
 
 
 class PlotFrame(ctk.CTkFrame):

@@ -58,6 +58,10 @@ Slowly changing/constant model parameters (`ModelConfig`):
 - Safety clamps: `min_glucose`, `max_glucose`, `min_insulin`,
   `max_insulin`
 
+The current calibration uses a deliberately small meal-to-glucose gain
+so that a single meal produces a moderate rise instead of driving the
+glucose state directly into the safety clamp.
+
 ### States `x`
 State stores all information needed to predict future behavior:
 
@@ -85,7 +89,8 @@ Uncontrolled or partially controlled effects:
 
 ## 4. What Is Influenced, Measured, and Assumed Constant
 - Influenced directly: insulin infusion rate, meal/sport event injection
-- Measured/exposed: glucose and insulin trajectories (plus controls)
+- Measured/exposed: glucose and insulin trajectories plus the
+  interstitial estimate used by the controller
 - Treated as constant/slowly varying: model parameters in
   `ModelConfig`
 
@@ -100,7 +105,10 @@ Uncontrolled or partially controlled effects:
 - Physiology subsystem (`PhysiologyModel`): ODE derivatives and bounded
   state propagation
 - Controller subsystem (`ProportionalController`): insulin-rate command
-  from glucose error with deadband and rate limits
+  from corrected interstitial glucose with deadband and rate limits
+- Estimation subsystem (`ExtendedKalmanFilterEstimator`): finite-
+  difference EKF scaffold that corrects interstitial glucose before the
+  controller sees it
 - Event subsystem (`PendingEvents`): meal/sport buffering and
   deterministic application
 - Integration subsystem (`SolveIvPIntegrator`): one-step numerical solve
@@ -189,5 +197,10 @@ $$
 ## 8. Notes and Limitations
 - This is a grey-box educational model, not a clinical-grade patient
   model.
+- The EKF scaffold is an intermediate observer layer for simulation and
+  validation, not a personalized clinical estimator.
 - It intentionally favors robustness and explainability over high-order
   physiological fidelity.
+- Meal response is tuned conservatively for benchmark replay; repeated
+  meals are expected to accumulate gradually rather than spike the
+  system in one step.
