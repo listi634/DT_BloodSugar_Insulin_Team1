@@ -538,6 +538,8 @@ chmod +x .git/hooks/pre-commit
 - [ ] Type hints present on all functions
 - [ ] No hardcoded values (use constants)
 - [ ] Model/simulation docs updated when related code changes
+- [ ] Read `project_files/USE_CASES_AND_GOALS.md`: confirm change aligns with use-case
+- [ ] Update `project_files/USE_CASES_AND_GOALS.md` when changes affect model, events, or UX
 - [ ] Tests pass
 - [ ] Commit message is descriptive
 

@@ -11,6 +11,17 @@ tests/
 └── test_digital_twin.py
 ```
 
+## Mapping to Use-Cases
+
+This project organizes tests to help validate the high-level use-cases
+described in `project_files/USE_CASES_AND_GOALS.md`.
+
+- `test_model.py` -> Replay / Validation run (model equations, glucose
+    dynamics)
+- `test_simulator.py` -> Deterministic loop order and event handling
+- `test_controller.py` -> Controller behavior for safety and rate limits
+
+
 ## Writing Tests
 
 ### Test File Naming

@@ -75,6 +75,32 @@ def main(target_path: str = "src") -> int:
         '3. TYPE CHECKING WITH MYPY'
     )
     
+    # Step 4: Use-case document presence and minimal content check
+    print("\n" + "=" * 70)
+    print("[STEP] CHECKING PROJECT USE-CASE DOCUMENT")
+    use_case = Path('project_files/USE_CASES_AND_GOALS.md')
+    if use_case.exists():
+        try:
+            text = use_case.read_text(encoding='utf8')
+        except Exception:
+            print(f"[ERROR] Cannot read {use_case}")
+            results['use_case_doc'] = False
+        else:
+            required = [
+                "Use Cases",
+                "Virtual & physical entities",
+                "Acceptance criteria",
+            ]
+            ok = all(k in text for k in required)
+            results['use_case_doc'] = ok
+            if ok:
+                print("[OK] Use-case document present and contains required sections")
+            else:
+                print("[WARNING] Use-case document is missing required headers")
+    else:
+        print("[FAILED] project_files/USE_CASES_AND_GOALS.md is missing")
+        results['use_case_doc'] = False
+
     # Step 4: Run tests if they exist
     print("\n" + "=" * 70)
     if Path('tests').exists():

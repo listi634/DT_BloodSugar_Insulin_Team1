@@ -198,6 +198,7 @@ def calculate_glucose_delta(
 - [Verification Setup](.github/VERIFICATION_SETUP.md) - Detailed tool documentation
 - [Scripts README](scripts/README.md) - Verification scripts guide
 - [Tests README](tests/README.md) - Testing documentation
+- [Use Cases & Goals](project_files/USE_CASES_AND_GOALS.md) - Canonical project use-cases and high-level goals
 - [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) - Official reference
 
 ---

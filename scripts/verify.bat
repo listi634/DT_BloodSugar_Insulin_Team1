@@ -19,6 +19,7 @@ set BLACK_PASS=0
 set PYLINT_PASS=0
 set MYPY_PASS=0
 set PYTEST_PASS=0
+set USECASE_PASS=0
 
 REM Step 1: Black (Auto-formatter)
 echo.
@@ -68,6 +69,19 @@ if %errorlevel% equ 0 (
     set MYPY_PASS=0
 )
 
+REM Step 4: Check use-case document presence
+echo.
+echo ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+echo [STEP] CHECKING PROJECT USE-CASE DOCUMENT
+echo ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+if exist project_files\USE_CASES_AND_GOALS.md (
+    echo. [OK] Use-case document found
+    set USECASE_PASS=1
+) else (
+    echo. [FAILED] project_files\USE_CASES_AND_GOALS.md is missing
+    set USECASE_PASS=0
+)
+
 REM Step 4: Run tests if they exist
 if exist tests (
     echo.
@@ -114,9 +128,14 @@ if !PYTEST_PASS! equ 1 (
 ) else (
     echo Tests          [FAILED]
 )
+if !USECASE_PASS! equ 1 (
+    echo UseCaseDoc      [PRESENT]
+) else (
+    echo UseCaseDoc      [MISSING]
+)
 echo ========================================================================
 
-if !BLACK_PASS! equ 1 if !MYPY_PASS! equ 1 if !PYTEST_PASS! equ 1 (
+if !BLACK_PASS! equ 1 if !MYPY_PASS! equ 1 if !PYTEST_PASS! equ 1 if !USECASE_PASS! equ 1 (
     echo ALL CRITICAL CHECKS PASSED - Code is ready for commit!
     endlocal
     exit /b 0

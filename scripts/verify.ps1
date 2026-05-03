@@ -17,6 +17,7 @@ $script:results = @{
     "Pylint" = $false
     "mypy"   = $false
     "Tests"  = $true
+    "UseCaseDoc" = $false
 }
 
 # Helper function to run a tool
@@ -74,6 +75,19 @@ $script:results["mypy"] = Run-Check `
     "mypy" `
     @("mypy", $Target, "--strict") `
     "3. TYPE CHECKING WITH MYPY"
+
+# Step 4: Use-case document presence
+Write-Host ""
+Write-Host ("=" * 70)
+Write-Host "[STEP] CHECKING PROJECT USE-CASE DOCUMENT"
+$useCase = Join-Path (Get-Location) "project_files/USE_CASES_AND_GOALS.md"
+if (Test-Path $useCase) {
+    Write-Host "[OK] Use-case document found"
+    $script:results["UseCaseDoc"] = $true
+} else {
+    Write-Host "[FAILED] project_files/USE_CASES_AND_GOALS.md is missing"
+    $script:results["UseCaseDoc"] = $false
+}
 
 # Step 4: Tests
 if (Test-Path "tests") {
