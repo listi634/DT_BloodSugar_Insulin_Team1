@@ -34,6 +34,15 @@ class PlotFrame(ctk.CTkFrame):
             linewidth=2.0,
             label="Simulated Glucose",
         )[0]
+        self.line_glucose_prediction = self.ax_glucose.plot(
+            [],
+            [],
+            color="#6C757D",
+            linewidth=2.0,
+            linestyle=":",
+            alpha=0.6,
+            label="Prediction",
+        )[0]
         self.line_glucose_actual = self.ax_glucose.plot(
             [],
             [],
@@ -57,6 +66,15 @@ class PlotFrame(ctk.CTkFrame):
             color="#1B998B",
             linewidth=2.0,
             label="Simulated Insulin",
+        )[0]
+        self.line_insulin_prediction = self.ax_insulin.plot(
+            [],
+            [],
+            color="#6C757D",
+            linewidth=2.0,
+            linestyle=":",
+            alpha=0.6,
+            label="Prediction",
         )[0]
 
         self.ax_glucose.grid(alpha=0.2)
@@ -94,6 +112,9 @@ class PlotFrame(ctk.CTkFrame):
         insulin_values: list[float],
         actual_glucose_reference: Sequence[tuple[float, float]] | None = None,
         carb_reference: Sequence[tuple[float, float]] | None = None,
+        prediction_time: list[float] | None = None,
+        prediction_glucose: list[float] | None = None,
+        prediction_insulin: list[float] | None = None,
     ) -> None:
         """Refresh line data and autoscale axes."""
         if not time_minutes:
@@ -112,11 +133,40 @@ class PlotFrame(ctk.CTkFrame):
         self.line_carb_reference.set_data(carb_ref_time, carb_ref_values)
         self.line_insulin.set_data(time_minutes, insulin_values)
 
+        if prediction_time is not None:
+            prediction_glucose = prediction_glucose or []
+            prediction_insulin = prediction_insulin or []
+            self.line_glucose_prediction.set_data(
+                prediction_time, prediction_glucose
+            )
+            self.line_insulin_prediction.set_data(
+                prediction_time, prediction_insulin
+            )
+
         self.ax_glucose.relim()
         self.ax_glucose.autoscale_view()
         self.ax_carb.relim()
         self.ax_carb.autoscale_view()
         self.ax_insulin.relim()
         self.ax_insulin.autoscale_view()
+        self._refresh_glucose_legend()
+        self.canvas.draw_idle()  # type: ignore[no-untyped-call]
+
+    def set_prediction_overlay(
+        self,
+        time_minutes: list[float],
+        glucose_values: list[float],
+        insulin_values: list[float],
+    ) -> None:
+        """Set the prediction overlay lines without altering main traces."""
+        self.line_glucose_prediction.set_data(time_minutes, glucose_values)
+        self.line_insulin_prediction.set_data(time_minutes, insulin_values)
+        self._refresh_glucose_legend()
+        self.canvas.draw_idle()  # type: ignore[no-untyped-call]
+
+    def clear_prediction_overlay(self) -> None:
+        """Clear any prediction overlay data from the charts."""
+        self.line_glucose_prediction.set_data([], [])
+        self.line_insulin_prediction.set_data([], [])
         self._refresh_glucose_legend()
         self.canvas.draw_idle()  # type: ignore[no-untyped-call]

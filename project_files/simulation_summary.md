@@ -4,7 +4,7 @@
 The simulation coordinates user disturbances, measurement assimilation,
 control decisions, and physiology prediction in a deterministic step
 loop. It provides a reproducible runtime for studying glucose-insulin
-behavior and control responses under meal and sport events.
+behavior and control responses under meal events.
 
 Primary goals:
 - Execute a deterministic update pipeline every step
@@ -14,8 +14,7 @@ Primary goals:
 ## 2. Expected Results and Use of Results
 Expected outputs:
 - Time traces of glucose, insulin, and insulin infusion rate
-- Observable response to meals (glucose rise) and sport (increased
-  sensitivity)
+- Observable response to meals (glucose rise)
 - Automated controller compensation after disturbances
 - Moderate single-meal excursions that remain below the hard glucose
   clamp under the current tuned defaults
@@ -42,7 +41,9 @@ Typical use:
 
 ## 5. Interactions with Other Entities
 Current interactions:
-- Humans: GUI user provides meal/sport events and run controls
+- Humans: GUI user preloads GlucoBench windows and controls run/pause
+  and reset. Meal decisions are made via a modal prompt when meal events
+  arrive.
 - Validation users: GUI can preload GlucoBench windows (user/start/end)
   and replay carbohydrate events plus glucose measurements from dataset
   timestamps
@@ -67,13 +68,14 @@ Current interactions:
 
 ### External interfaces
 - GUI to simulation commands:
-  - Queue meal: `queue_meal(carbs)`
-  - Queue sport: `queue_sport(multiplier, duration_minutes)`
+  - Queue meal: `queue_meal(carbs)` (from replayed benchmark events)
   - Runtime controls: step/reset (and loop start/stop in GUI layer)
+  - Meal decision prompt:
+    - Continue simulation immediately or launch a prediction overlay
   - Validation preload controls:
     - Select user and inclusive start/end timestamp window
     - Preload actual glucose and carbohydrate references
-    - Run validation through same non-blocking Tk loop
+    - Run replay through the same non-blocking Tk loop
 - History output for plotting:
   `get_history_arrays()`
 
@@ -86,8 +88,9 @@ sequenceDiagram
     participant Model as PhysiologyModel
     participant Int as SolveIvPIntegrator
 
-    User->>GUI: Add meal / sport
-    GUI->>Sim: queue_meal / queue_sport
+    User->>GUI: Preload validation window
+    GUI->>Sim: queue_meal (from replay)
+    User->>GUI: Choose continue or prediction when meal arrives
     GUI->>Sim: step()
     Sim->>Sim: apply_pending_events()
     Sim->>Ctrl: compute_insulin_rate(interstitium, ...)
@@ -117,8 +120,10 @@ sequenceDiagram
   - Replays carbohydrate events as queued meal events
   - Feeds the window glucose series into the estimator as a measurement
     reference
-  - Ignores sport and other exogenous benchmark signals
   - Auto-stops at selected end timestamp span
+  - Pauses when a meal arrives to allow continue vs. prediction
+  - Prediction runs ahead without ingesting new benchmark data and
+    leaves a background overlay on the plot
 
 ### Not implemented in V1
 - Save/load simulation snapshots
@@ -181,6 +186,5 @@ flowchart TD
 
 ## 10. Practical Constraints
 - Event buffering is step-based; intra-step event timing is not modeled
-- Sport effects are aggregated with additive duration and capped by
-  max multiplier logic at application time
+- Benchmark meals during prediction are ignored by the simulation
 - Real-time guarantees depend on GUI scheduling and host performance

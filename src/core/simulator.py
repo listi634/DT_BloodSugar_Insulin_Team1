@@ -1,6 +1,9 @@
 """Simulation orchestration for deterministic event/controller/model flow."""
 
+from dataclasses import dataclass
 from dataclasses import replace
+
+import numpy as np
 
 from src.core.controller import ProportionalController
 from src.core.model import PhysiologyModel
@@ -61,9 +64,30 @@ class GlucoseSimulator:
         return replace(self._state)
 
     @property
+    def model_config(self) -> ModelConfig:
+        """Return the active model configuration."""
+        return self._model_config
+
+    @property
     def history(self) -> list[SimulationSnapshot]:
         """Simulation history as immutable snapshots."""
         return list(self._history)
+
+    def export_snapshot(self) -> "SimulatorSnapshot":
+        """Capture simulator state and covariance for later restore."""
+        return SimulatorSnapshot(
+            state=replace(self._state),
+            estimator_covariance=self._estimator.covariance,
+            history=list(self._history),
+        )
+
+    def restore_snapshot(self, snapshot: "SimulatorSnapshot") -> None:
+        """Restore simulator state, estimator covariance, and history."""
+        self._state = replace(snapshot.state)
+        self._estimator.set_state(self._state)
+        self._estimator.set_covariance(snapshot.estimator_covariance)
+        self._pending.clear()
+        self._history = list(snapshot.history)
 
     def queue_meal(self, carbs: float) -> None:
         """Queue meal carbohydrates to be applied at next step.
@@ -160,3 +184,12 @@ class GlucoseSimulator:
             sport_multiplier=state.sport_multiplier,
             sport_minutes_remaining=state.sport_minutes_remaining,
         )
+
+
+@dataclass(frozen=True)
+class SimulatorSnapshot:
+    """Exported runtime snapshot for restore after prediction runs."""
+
+    state: SimulationState
+    estimator_covariance: np.ndarray
+    history: list[SimulationSnapshot]

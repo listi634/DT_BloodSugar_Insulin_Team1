@@ -10,6 +10,7 @@ import customtkinter as ctk
 from src.core.benchmark_loader import GlucoBenchLoader
 from src.core.benchmark_loader import ValidationWindowData
 from src.core.simulator import GlucoseSimulator
+from src.core.simulator import SimulatorSnapshot
 from src.core.state import IntegratorMethod
 from src.core.utilities import collect_due_carb_events
 from src.gui.control_panel import ControlPanel
@@ -50,6 +51,15 @@ class ValidationRunState:
             measurement_replay_index=0,
             replay_index=0,
         )
+
+
+@dataclass(frozen=True)
+class PredictionOverlay:
+    """Stored prediction series for plotting as a background overlay."""
+
+    time_minutes: list[float]
+    glucose: list[float]
+    insulin: list[float]
 
 
 def collect_due_measurement(
@@ -96,6 +106,11 @@ class DigitalTwinApp(ctk.CTk):
         self._loop_after_id: str | None = None
         self._validation = ValidationRunState()
         self._benchmark_loader: GlucoBenchLoader | None = None
+        self._pending_meal_carbs: float | None = None
+        self._premeal_snapshot: SimulatorSnapshot | None = None
+        self._prediction_overlay: PredictionOverlay | None = None
+        self._awaiting_resume = False
+        self._prediction_horizon_minutes = 1200.0
 
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("green")
@@ -110,8 +125,6 @@ class DigitalTwinApp(ctk.CTk):
 
         self.control_panel = ControlPanel(
             self,
-            on_meal=self._on_meal,
-            on_sport=self._on_sport,
             on_method_change=self._on_integrator_method_change,
             on_toggle_run=self._toggle_run,
             on_reset=self._on_reset,
@@ -119,8 +132,6 @@ class DigitalTwinApp(ctk.CTk):
             on_validation_start_change=self._on_validation_start_change,
             on_validation_end_change=self._on_validation_end_change,
             on_validation_preload=self._on_validation_preload,
-            on_validation_run=self._on_validation_run,
-            on_error=self._set_status,
         )
         self.control_panel.grid(
             row=0,
@@ -170,47 +181,39 @@ class DigitalTwinApp(ctk.CTk):
 
     def _toggle_run(self) -> None:
         """Toggle run/pause state for non-blocking simulation loop."""
-        self._running = not self._running
-        self.control_panel.set_running(self._running)
-        self.control_panel.set_manual_inputs_enabled(
-            not (self._running and self._validation.loaded)
-        )
         if self._running:
-            self._set_status("Simulation running.")
-            self._schedule_next_step()
-        else:
+            self._running = False
+            self.control_panel.set_running(False)
             self._set_status("Simulation paused.")
             self._cancel_schedule()
+            return
 
-    def _on_meal(self, carbs: float) -> None:
-        """Handle user meal action and show feedback."""
-        try:
-            self._simulator.queue_meal(carbs)
-            self._set_status(f"Queued meal: {carbs:.1f} g carbs")
-        except ValueError as exc:
-            self._set_status(str(exc))
+        if not self._validation.loaded:
+            self._set_status("Preload a GlucoBench window before running.")
+            return
 
-    def _on_sport(self, multiplier: float, duration_minutes: float) -> None:
-        """Handle user sport action and show feedback."""
-        try:
-            self._simulator.queue_sport(multiplier, duration_minutes)
-            self._set_status(
-                "Queued sport boost: "
-                f"x{multiplier:.2f} for {duration_minutes:.0f} min"
-            )
-        except ValueError as exc:
-            self._set_status(str(exc))
+        if self._awaiting_resume:
+            self._resume_after_prediction()
+
+        self._running = True
+        self.control_panel.set_running(self._running)
+        self._set_status("Simulation running.")
+        self._schedule_next_step()
 
     def _on_reset(self) -> None:
         """Reset simulator state and chart data."""
         self._cancel_schedule()
         self._running = False
         self.control_panel.set_running(False)
-        self.control_panel.set_manual_inputs_enabled(True)
         self._validation = ValidationRunState()
         self._simulator = self._simulator_builder(
             self._integrator_method, None
         )
+        self._pending_meal_carbs = None
+        self._premeal_snapshot = None
+        self._prediction_overlay = None
+        self._awaiting_resume = False
+        self.plot_frame.clear_prediction_overlay()
         self.control_panel.set_validation_status(
             "No validation window loaded."
         )
@@ -228,7 +231,11 @@ class DigitalTwinApp(ctk.CTk):
         self._cancel_schedule()
         self._running = False
         self.control_panel.set_running(False)
-        self.control_panel.set_manual_inputs_enabled(True)
+        self._pending_meal_carbs = None
+        self._premeal_snapshot = None
+        self._prediction_overlay = None
+        self._awaiting_resume = False
+        self.plot_frame.clear_prediction_overlay()
         self._integrator_method = selected_method
         if self._validation.loaded:
             self._simulator = self._simulator_builder(
@@ -265,7 +272,10 @@ class DigitalTwinApp(ctk.CTk):
             return
 
         if self._validation.loaded:
-            self._inject_validation_carbs()
+            due_carbs = self._collect_validation_carbs()
+            if due_carbs:
+                self._pause_for_meal(due_carbs)
+                return
 
         measured_interstitium = None
         if self._validation.loaded:
@@ -277,7 +287,6 @@ class DigitalTwinApp(ctk.CTk):
         if self._validation.loaded and self._is_validation_finished():
             self._running = False
             self.control_panel.set_running(False)
-            self.control_panel.set_manual_inputs_enabled(True)
             self._set_status(
                 "Validation run finished at selected end timestamp."
             )
@@ -299,10 +308,25 @@ class DigitalTwinApp(ctk.CTk):
             insulin,
             actual_glucose_reference=glucose_reference,
             carb_reference=carb_reference,
+            prediction_time=(
+                self._prediction_overlay.time_minutes
+                if self._prediction_overlay
+                else None
+            ),
+            prediction_glucose=(
+                self._prediction_overlay.glucose
+                if self._prediction_overlay
+                else None
+            ),
+            prediction_insulin=(
+                self._prediction_overlay.insulin
+                if self._prediction_overlay
+                else None
+            ),
         )
 
         state = self._simulator.current_state
-        mode = "validation" if self._validation.loaded else "manual"
+        mode = "glucobench" if self._validation.loaded else "idle"
         metrics_text = (
             f"t={state.time_minutes:.0f} min    "
             f"G={state.glucose:.2f} mmol/L    "
@@ -404,7 +428,11 @@ class DigitalTwinApp(ctk.CTk):
         self._cancel_schedule()
         self._running = False
         self.control_panel.set_running(False)
-        self.control_panel.set_manual_inputs_enabled(True)
+        self._pending_meal_carbs = None
+        self._premeal_snapshot = None
+        self._prediction_overlay = None
+        self._awaiting_resume = False
+        self.plot_frame.clear_prediction_overlay()
 
         self._validation = ValidationRunState.from_window(window)
         self._simulator = self._simulator_builder(
@@ -420,20 +448,10 @@ class DigitalTwinApp(ctk.CTk):
         )
         self._set_status("Validation window preloaded.")
 
-    def _on_validation_run(self) -> None:
-        """Start validation mode with currently preloaded window."""
-        if not self._validation.loaded:
-            self._set_status("Preload a validation window before running.")
-            return
-        if self._running:
-            self._set_status("Simulation already running.")
-            return
-        self._toggle_run()
-
-    def _inject_validation_carbs(self) -> None:
-        """Queue due carb events for current validation simulation time."""
+    def _collect_validation_carbs(self) -> list[float]:
+        """Collect carb events due for the current validation time."""
         if self._validation.carb_replay_events is None:
-            return
+            return []
 
         current_time = self._simulator.current_state.time_minutes
         due_carbs, next_index = collect_due_carb_events(
@@ -441,9 +459,8 @@ class DigitalTwinApp(ctk.CTk):
             self._validation.replay_index,
             current_time,
         )
-        for carbs in due_carbs:
-            self._simulator.queue_meal(carbs)
         self._validation.replay_index = next_index
+        return due_carbs
 
     def _inject_validation_measurement(self) -> float | None:
         """Return the latest measurement due for the current tick."""
@@ -465,3 +482,170 @@ class DigitalTwinApp(ctk.CTk):
             self._simulator.current_state.time_minutes
             >= self._validation.duration_minutes
         )
+
+    def _pause_for_meal(self, due_carbs: list[float]) -> None:
+        """Pause simulation and prompt for meal decision."""
+        total_carbs = sum(due_carbs)
+        if total_carbs <= 0.0:
+            return
+
+        self._running = False
+        self.control_panel.set_running(False)
+        self._cancel_schedule()
+        self._premeal_snapshot = self._simulator.export_snapshot()
+        self._pending_meal_carbs = total_carbs
+
+        choice = self._prompt_meal_action(total_carbs)
+        if choice == "continue":
+            self._apply_pending_meal_and_resume()
+        else:
+            self._run_prediction(total_carbs)
+
+    def _prompt_meal_action(self, carbs: float) -> str:
+        """Ask the user whether to continue or run a prediction."""
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Meal detected")
+        dialog.geometry("420x190")
+        dialog.resizable(False, False)
+        dialog.grab_set()
+
+        message = (
+            f"Meal event detected ({carbs:.1f} g carbs).\n"
+            "Continue simulation or run a prediction?"
+        )
+        label = ctk.CTkLabel(dialog, text=message, justify="left")
+        label.pack(padx=16, pady=(18, 12), anchor="w")
+
+        result: dict[str, str] = {"choice": "continue"}
+
+        def choose_continue() -> None:
+            result["choice"] = "continue"
+            dialog.destroy()
+
+        def choose_predict() -> None:
+            result["choice"] = "predict"
+            dialog.destroy()
+
+        dialog.protocol("WM_DELETE_WINDOW", choose_continue)
+
+        button_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        button_frame.pack(padx=16, pady=(0, 16), fill="x")
+
+        continue_button = ctk.CTkButton(
+            button_frame,
+            text="Continue",
+            command=choose_continue,
+        )
+        continue_button.pack(side="left", expand=True, padx=(0, 8))
+
+        predict_button = ctk.CTkButton(
+            button_frame,
+            text="Predict",
+            fg_color="#555555",
+            hover_color="#444444",
+            command=choose_predict,
+        )
+        predict_button.pack(side="right", expand=True, padx=(8, 0))
+
+        self.wait_window(dialog)
+        return result["choice"]
+
+    def _apply_pending_meal_and_resume(self) -> None:
+        """Apply the queued meal and resume the simulation loop."""
+        if self._pending_meal_carbs is None:
+            self._set_status("No meal pending to apply.")
+            return
+        try:
+            self._simulator.queue_meal(self._pending_meal_carbs)
+        except ValueError as exc:
+            self._set_status(str(exc))
+            return
+
+        self._pending_meal_carbs = None
+        self._premeal_snapshot = None
+        self._awaiting_resume = False
+        self._running = True
+        self.control_panel.set_running(True)
+        self._set_status("Meal applied. Simulation running.")
+        self._schedule_next_step()
+
+    def _run_prediction(self, meal_carbs: float) -> None:
+        """Run a prediction horizon and store its overlay trace."""
+        if self._premeal_snapshot is None:
+            self._set_status("Prediction unavailable without snapshot.")
+            return
+
+        self._set_status("Running prediction...")
+        prediction_end = (
+            self._premeal_snapshot.state.time_minutes
+            + self._prediction_horizon_minutes
+        )
+        self._skip_validation_meals_until(prediction_end)
+
+        dt_minutes = self._simulator.model_config.dt_minutes
+        steps = int(self._prediction_horizon_minutes / dt_minutes)
+        if steps <= 0:
+            self._set_status("Prediction duration too short.")
+            return
+
+        snapshot = self._premeal_snapshot
+        try:
+            self._simulator.queue_meal(meal_carbs)
+            for _ in range(steps):
+                self._simulator.step(measured_interstitium=None)
+        except ValueError as exc:
+            self._set_status(str(exc))
+            self._simulator.restore_snapshot(snapshot)
+            return
+
+        time, glucose, insulin, _ = self._simulator.get_history_arrays()
+        start_time = snapshot.state.time_minutes
+        overlay_time: list[float] = []
+        overlay_glucose: list[float] = []
+        overlay_insulin: list[float] = []
+        for time_point, glucose_value, insulin_value in zip(
+            time, glucose, insulin
+        ):
+            if time_point >= start_time:
+                overlay_time.append(time_point)
+                overlay_glucose.append(glucose_value)
+                overlay_insulin.append(insulin_value)
+
+        self._prediction_overlay = PredictionOverlay(
+            time_minutes=overlay_time,
+            glucose=overlay_glucose,
+            insulin=overlay_insulin,
+        )
+        self.plot_frame.set_prediction_overlay(
+            overlay_time, overlay_glucose, overlay_insulin
+        )
+        self._simulator.restore_snapshot(snapshot)
+        self._refresh_view()
+
+        self._awaiting_resume = True
+        self._running = False
+        self.control_panel.set_running(False)
+        self._set_status(
+            "Prediction complete. Press Run to continue simulation."
+        )
+
+    def _resume_after_prediction(self) -> None:
+        """Restore pre-meal snapshot and apply the stored meal."""
+        if self._premeal_snapshot is None or self._pending_meal_carbs is None:
+            self._awaiting_resume = False
+            return
+        self._simulator.restore_snapshot(self._premeal_snapshot)
+        self._premeal_snapshot = None
+        self._apply_pending_meal_and_resume()
+
+    def _skip_validation_meals_until(self, end_time: float) -> None:
+        """Advance replay index to skip meals during prediction window."""
+        if self._validation.carb_replay_events is None:
+            return
+
+        _, next_index = collect_due_carb_events(
+            self._validation.carb_replay_events,
+            self._validation.replay_index,
+            end_time,
+        )
+        self._validation.replay_index = next_index

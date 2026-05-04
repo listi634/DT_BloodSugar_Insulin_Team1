@@ -42,6 +42,14 @@ class ExtendedKalmanFilterEstimator:
         """Return a copy of the EKF covariance matrix."""
         return self._covariance.copy()
 
+    def set_covariance(self, covariance: np.ndarray) -> None:
+        """Replace the EKF covariance matrix with validated input."""
+        if covariance.shape != (4, 4):
+            raise ValueError("covariance must be a 4x4 matrix")
+        if not np.isfinite(covariance).all():
+            raise ValueError("covariance must contain finite values")
+        self._covariance = covariance.copy()
+
     def set_state(self, state: SimulationState) -> None:
         """Replace the internal state estimate without changing covariance."""
         self._validate_state(state)

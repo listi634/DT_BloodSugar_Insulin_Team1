@@ -22,16 +22,15 @@ Primary persona
 
 High-level goal
 ---------------
-Provide a realistic, easy-to-run digital twin that: (1) reproduces measured
-interstitial glucose time series when operating in "replay/validation" mode,
-and (2) when switched to "free-run/prediction" mode, forecasts near-term
-glucose trajectories and suggests safe, actionable options (eat/not eat,
-insulin dose suggestions) with conservative safety bounds.
+Provide a realistic, easy-to-run digital twin that (1) reproduces measured
+interstitial glucose time series when operating on a replayed GlucoBench
+window, and (2) when a meal event arrives, can optionally run a short-term
+free-run prediction without ingesting additional benchmark data.
 
 Virtual & physical entities
 ---------------------------
-- Physical: Human subject with CGM (interstitial glucose) and optional event
-  logging (meals, sport). Units: mg/dL (primary) and mmol/L (supported).
+- Physical: Human subject with CGM (interstitial glucose) and event
+  logging (meals). Units: mg/dL (primary) and mmol/L (supported).
 - Virtual: Low-order grey-box compartmental model (E-DES style) representing
   stomach/intestine, plasma glucose & insulin, and interstitium. The model
   is a tool for state estimation (insulin inference) and short-term
@@ -40,18 +39,17 @@ Virtual & physical entities
 Primary use-cases
 ------------------
 1. Replay / Validation run
-   - Load recorded CGM time series and associated events.
+   - Load recorded CGM time series and associated meal events.
    - Run estimator to infer unobserved states (e.g., insulin) and compare
      simulated interstitial glucose with recorded CGM traces.
    - Use metrics (RMSE, hypoglycemia/hyperglycemia detection) for
      evaluation.
 
-2. Free-run / Prediction run
-   - Stop ingesting new measurement data at a chosen time and run the
-     simulator forward using the current estimated state and planned
-     events (e.g., a requested meal).
-   - Provide short-term forecasts and ranked recommendations (eat now,
-     delay, insulin amount) with conservative safety clamps.
+2. Meal-triggered prediction
+   - When a meal event is reached during replay, pause the simulation and
+     allow the user to continue or run a short-term prediction.
+   - The prediction runs forward without ingesting new benchmark data and
+     leaves a background overlay for comparison.
 
 3. Developer / Offline analysis
    - Use the model to generate reproducible scenarios for testing,
@@ -59,16 +57,15 @@ Primary use-cases
 
 Data & events
 -------------
-- Expected inputs: CGM time series (timestamp, glucose), event rows for
-  meals (timestamp, carbs) and optional sport events (timestamp, duration,
-  intensity).
+- Expected inputs: CGM time series (timestamp, glucose) and event rows for
+  meals (timestamp, carbs).
 - Reference datasets are kept in the `data/` folder and should be used as
   canonical examples.
 
 Acceptance criteria (high-level)
 --------------------------------
-- The project must provide the two main modes (replay/validation and
-  free-run/prediction) via the GUI and CLI.
+- The project must provide replayed GlucoBench runs and meal-triggered
+  prediction overlays via the GUI and CLI.
 - Deterministic loop order must be preserved: apply events → controller →
   integrate → save history.
 - The simulator must expose a reproducible example scenario (small CSV
