@@ -127,7 +127,7 @@ class ControlPanel(ctk.CTkFrame):
 
         self.validation_preload_button = ctk.CTkButton(
             self.validation_frame,
-            text="Preload Validation",
+            text="Preload Dataset Run",
             command=self._on_validation_preload,
         )
         self.validation_preload_button.grid(
@@ -136,7 +136,7 @@ class ControlPanel(ctk.CTkFrame):
 
         self.validation_status_label = ctk.CTkLabel(
             self.validation_frame,
-            text="No validation window loaded.",
+            text="No dataset window loaded.",
             anchor="w",
             justify="left",
             wraplength=260,

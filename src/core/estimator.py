@@ -132,10 +132,14 @@ class ExtendedKalmanFilterEstimator:
             raise ValueError("state.insulin must be non-negative")
         if state.carb_pool < 0.0:
             raise ValueError("state.carb_pool must be non-negative")
+        if state.intestine_carb < 0.0:
+            raise ValueError("state.intestine_carb must be non-negative")
         if state.interstitium < 0.0:
             raise ValueError("state.interstitium must be non-negative")
         if state.insulin_rate < 0.0:
             raise ValueError("state.insulin_rate must be non-negative")
+        if state.insulin_action < 0.0:
+            raise ValueError("state.insulin_action must be non-negative")
         if state.sport_multiplier < 1.0:
             raise ValueError("state.sport_multiplier must be at least 1.0")
         if state.sport_minutes_remaining < 0.0:
@@ -230,8 +234,10 @@ class ExtendedKalmanFilterEstimator:
                 min(state.insulin, self._model_config.max_insulin),
             ),
             carb_pool=max(0.0, state.carb_pool),
+            intestine_carb=max(0.0, state.intestine_carb),
             interstitium=max(
                 self._model_config.min_glucose,
                 min(state.interstitium, self._model_config.max_glucose),
             ),
+            insulin_action=max(0.0, state.insulin_action),
         )

@@ -157,3 +157,33 @@ def test_measurement_input_keeps_meal_replay_available() -> None:
 
     assert snapshot.time_minutes == ModelConfig().dt_minutes
     assert snapshot.carb_pool > 0.0
+
+
+def test_validation_mode_accepts_step_local_external_insulin() -> None:
+    """Replay insulin input should apply only to the current validation step."""
+    validation_simulator = GlucoseSimulator(
+        model=PhysiologyModel(),
+        controller=ProportionalController(),
+        model_config=ModelConfig(),
+        controller_config=ControllerConfig(),
+        initial_state=SimulationState(
+            time_minutes=0.0,
+            glucose=ModelConfig().glucose_basal,
+            insulin=ModelConfig().insulin_basal,
+            carb_pool=0.0,
+            interstitium=ModelConfig().glucose_basal,
+            insulin_rate=0.0,
+            sport_multiplier=1.0,
+            sport_minutes_remaining=0.0,
+        ),
+        validation_mode=True,
+    )
+
+    snapshot = validation_simulator.step(
+        measured_interstitium=5.0,
+        external_insulin_rate=1.25,
+    )
+    next_snapshot = validation_simulator.step(measured_interstitium=5.0)
+
+    assert snapshot.insulin_rate == 1.25
+    assert next_snapshot.insulin_rate == 0.0

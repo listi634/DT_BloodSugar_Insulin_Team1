@@ -22,8 +22,15 @@ def _ensure_project_root_on_sys_path() -> None:
 def build_simulator(
     integrator_method: IntegratorMethod = "RK45",
     initial_glucose_mmol_l: float | None = None,
+    validation_mode: bool = False,
 ) -> "GlucoseSimulator":
-    """Build simulator dependencies with validated configuration."""
+    """Build simulator dependencies with validated configuration.
+
+    Args:
+        integrator_method: ODE solver method.
+        initial_glucose_mmol_l: Seed initial glucose, or use basal.
+        validation_mode: If True, disable controller (passive replay mode).
+    """
     _ensure_project_root_on_sys_path()
 
     from src.core.controller import ProportionalController
@@ -65,6 +72,7 @@ def build_simulator(
         controller_config=controller_config,
         initial_state=initial_state,
         integrator_config=integrator_config,
+        validation_mode=validation_mode,
     )
 
 

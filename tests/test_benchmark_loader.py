@@ -17,7 +17,9 @@ def test_loader_validates_required_columns(tmp_path: Path) -> None:
     """Loader should fail with clear error when required columns are missing."""
     csv_path = tmp_path / "invalid.csv"
     _write_csv(
-        csv_path, "user_id,timestamp,glucose\nU001,2024-01-01 00:00:00,100\n"
+        csv_path,
+        "user_id,timestamp,glucose,carbs\n"
+        "U001,2024-01-01 00:00:00,100,0\n",
     )
 
     with pytest.raises(ValueError, match="missing required columns"):
@@ -31,11 +33,11 @@ def test_get_user_ids_and_days_sorted(tmp_path: Path) -> None:
         csv_path,
         "\n".join(
             [
-                "user_id,timestamp,glucose,carbs",
-                "U002,2024-01-01 00:10:00,90,0",
-                "U001,2024-01-01 00:15:00,99,0",
-                "U001,2024-01-01 00:05:00,101,0",
-                "U001,2024-01-02 00:05:00,102,0",
+                "user_id,timestamp,glucose,carbs,insulin_basal",
+                "U002,2024-01-01 00:10:00,90,0,1.0",
+                "U001,2024-01-01 00:15:00,99,0,0.9",
+                "U001,2024-01-01 00:05:00,101,0,1.1",
+                "U001,2024-01-02 00:05:00,102,0,1.2",
             ]
         ),
     )
@@ -55,10 +57,10 @@ def test_get_valid_end_days_constrains_from_selected_start(
         csv_path,
         "\n".join(
             [
-                "user_id,timestamp,glucose,carbs",
-                "U001,2024-01-01 00:10:00,90,0",
-                "U001,2024-01-02 00:10:00,91,0",
-                "U001,2024-01-03 00:10:00,92,0",
+                "user_id,timestamp,glucose,carbs,insulin_basal",
+                "U001,2024-01-01 00:10:00,90,0,1.0",
+                "U001,2024-01-02 00:10:00,91,0,1.1",
+                "U001,2024-01-03 00:10:00,92,0,1.2",
             ]
         ),
     )
@@ -80,11 +82,11 @@ def test_build_validation_window_converts_and_extracts_carbs(
         csv_path,
         "\n".join(
             [
-                "user_id,timestamp,glucose,carbs",
-                "U001,2024-01-01 00:00:00,126,0",
-                "U001,2024-01-01 00:05:00,144,0",
-                "U001,2024-01-01 00:10:00,162,25",
-                "U001,2024-01-01 00:20:00,180,0",
+                "user_id,timestamp,glucose,carbs,insulin_basal",
+                "U001,2024-01-01 00:00:00,126,0,1.0",
+                "U001,2024-01-01 00:05:00,144,0,0.9",
+                "U001,2024-01-01 00:10:00,162,25,0.8",
+                "U001,2024-01-01 00:20:00,180,0,0.7",
             ]
         ),
     )
@@ -108,6 +110,11 @@ def test_build_validation_window_converts_and_extracts_carbs(
     assert window.measurement_reference == window.glucose_reference
     assert window.carb_reference == [(5.0, 25.0)]
     assert window.carb_replay_events == [(5.0, 25.0)]
+    assert window.insulin_basal_reference == [
+        (0.0, 0.9),
+        (5.0, 0.8),
+        (15.0, 0.7),
+    ]
     assert window.insulin_reference == []
 
 
@@ -120,8 +127,8 @@ def test_build_validation_window_rejects_invalid_inputs(
         csv_path,
         "\n".join(
             [
-                "user_id,timestamp,glucose,carbs",
-                "U001,2024-01-01 00:00:00,120,0",
+                "user_id,timestamp,glucose,carbs,insulin_basal",
+                "U001,2024-01-01 00:00:00,120,0,1.0",
             ]
         ),
     )

@@ -30,8 +30,20 @@ class GlucoseSimulator:
         initial_state: SimulationState,
         estimator: ExtendedKalmanFilterEstimator | None = None,
         integrator_config: IntegratorConfig | None = None,
+        validation_mode: bool = False,
     ) -> None:
-        """Create simulator with explicit dependencies and typed state."""
+        """Create simulator with explicit dependencies and typed state.
+
+        Args:
+            model: Physiology model for integration.
+            controller: Insulin control algorithm.
+            model_config: Model parameters.
+            controller_config: Controller tuning.
+            initial_state: Starting conditions.
+            estimator: State estimator (EKF), created if None.
+            integrator_config: ODE solver settings.
+            validation_mode: If True, disable controller and hold insulin at 0.
+        """
         model_config.validate()
         controller_config.validate()
         if initial_state.glucose < 0.0:
@@ -54,6 +66,7 @@ class GlucoseSimulator:
             estimator_config=EstimatorConfig(),
         )
         self._pending = PendingEvents()
+        self._validation_mode = validation_mode
         self._history: list[SimulationSnapshot] = [
             self._to_snapshot(self._state)
         ]
@@ -121,9 +134,36 @@ class GlucoseSimulator:
     def step(
         self,
         measured_interstitium: float | None = None,
+        external_insulin_rate: float | None = None,
     ) -> SimulationSnapshot:
-        """Execute one deterministic step of the simulation pipeline."""
+        """Execute one deterministic step of the simulation pipeline.
+
+        In validation mode, the controller is disabled and the model is
+        advanced directly so replay traces stay smooth and passive.
+
+        Args:
+            measured_interstitium: Optional CGM measurement for EKF update.
+            external_insulin_rate: Optional historical insulin input for the
+                current step, used in replay mode.
+        """
+        if self._validation_mode:
+            self._state.insulin_rate = 0.0
+        if external_insulin_rate is not None:
+            if external_insulin_rate < 0.0:
+                raise ValueError("external_insulin_rate must be non-negative")
+            self._state.insulin_rate = external_insulin_rate
+
         self._apply_pending_events()
+
+        if self._validation_mode:
+            self._state = self._model.integrate(
+                self._state,
+                self._model_config,
+            )
+            snapshot = self._to_snapshot(self._state)
+            self._history.append(snapshot)
+            return snapshot
+
         self._estimator.set_state(self._state)
         self._estimator.predict(
             dt_minutes=self._model_config.dt_minutes,
@@ -134,12 +174,15 @@ class GlucoseSimulator:
         self._estimator.update(measured_interstitium)
 
         estimate = self._estimator.current_state
+        # Normal mode: compute next insulin rate from controller.
         self._state.insulin_rate = self._controller.compute_insulin_rate(
             glucose=estimate.interstitium,
             current_rate=self._state.insulin_rate,
             config=self._controller_config,
         )
-        self._state = replace(estimate, insulin_rate=self._state.insulin_rate)
+        self._state = replace(
+            estimate, insulin_rate=self._state.insulin_rate
+        )
         self._estimator.set_state(self._state)
 
         snapshot = self._to_snapshot(self._state)
@@ -181,6 +224,8 @@ class GlucoseSimulator:
             interstitium=state.interstitium,
             insulin_rate=state.insulin_rate,
             carb_pool=state.carb_pool,
+            intestine_carb=state.intestine_carb,
+            insulin_action=state.insulin_action,
             sport_multiplier=state.sport_multiplier,
             sport_minutes_remaining=state.sport_minutes_remaining,
         )

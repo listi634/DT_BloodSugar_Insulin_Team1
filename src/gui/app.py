@@ -87,7 +87,7 @@ class DigitalTwinApp(ctk.CTk):
     def __init__(
         self,
         simulator_builder: Callable[
-            [IntegratorMethod, float | None],
+            [IntegratorMethod, float | None, bool],
             GlucoseSimulator,
         ],
         step_interval_ms: int = 200,
@@ -100,7 +100,11 @@ class DigitalTwinApp(ctk.CTk):
 
         self._simulator_builder = simulator_builder
         self._integrator_method = integrator_method
-        self._simulator = simulator_builder(integrator_method, None)
+        self._simulator = simulator_builder(
+            integrator_method,
+            None,
+            False,
+        )
         self._step_interval_ms = step_interval_ms
         self._running = False
         self._loop_after_id: str | None = None
@@ -207,7 +211,9 @@ class DigitalTwinApp(ctk.CTk):
         self.control_panel.set_running(False)
         self._validation = ValidationRunState()
         self._simulator = self._simulator_builder(
-            self._integrator_method, None
+            self._integrator_method,
+            None,
+            False,
         )
         self._pending_meal_carbs = None
         self._premeal_snapshot = None
@@ -241,13 +247,19 @@ class DigitalTwinApp(ctk.CTk):
             self._simulator = self._simulator_builder(
                 selected_method,
                 self._validation.initial_glucose_mmol_l,
+                True,
             )
             self._validation.replay_index = 0
+            self._validation.measurement_replay_index = 0
             self._set_status(
                 "Integrator method updated. Validation replay reset."
             )
         else:
-            self._simulator = self._simulator_builder(selected_method, None)
+            self._simulator = self._simulator_builder(
+                selected_method,
+                None,
+                False,
+            )
             self._set_status(f"Integrator method set to {selected_method}.")
         self._refresh_view()
 
@@ -438,6 +450,7 @@ class DigitalTwinApp(ctk.CTk):
         self._simulator = self._simulator_builder(
             self._integrator_method,
             window.initial_glucose_mmol_l,
+            True,
         )
         self._refresh_view()
 

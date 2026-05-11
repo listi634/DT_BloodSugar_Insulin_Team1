@@ -20,6 +20,7 @@ class BenchmarkRow:
     user_id: str
     timestamp: datetime
     glucose_mmol_l: float
+    insulin_basal_units: float
     carbs_grams: float
     insulin_bolus_units: float
 
@@ -37,13 +38,20 @@ class ValidationWindowData:
     measurement_reference: list[tuple[float, float]]
     carb_reference: list[tuple[float, float]]
     carb_replay_events: list[tuple[float, float]]
+    insulin_basal_reference: list[tuple[float, float]]
     insulin_reference: list[tuple[float, float]]
 
 
 class GlucoBenchLoader:
     """Loads and filters benchmark data for GUI validation workflows."""
 
-    _REQUIRED_COLUMNS = {"user_id", "timestamp", "glucose", "carbs"}
+    _REQUIRED_COLUMNS = {
+        "user_id",
+        "timestamp",
+        "glucose",
+        "carbs",
+        "insulin_basal",
+    }
 
     def __init__(self, csv_path: str | Path) -> None:
         """Read and validate benchmark data from CSV file.
@@ -187,12 +195,16 @@ class GlucoBenchLoader:
         measurement_reference: list[tuple[float, float]] = []
         carb_reference: list[tuple[float, float]] = []
         carb_replay_events: list[tuple[float, float]] = []
+        insulin_basal_reference: list[tuple[float, float]] = []
         insulin_reference: list[tuple[float, float]] = []
         for row in window_rows:
             elapsed_minutes = (row.timestamp - start_dt).total_seconds() / 60.0
             reference_point = (elapsed_minutes, row.glucose_mmol_l)
             glucose_reference.append(reference_point)
             measurement_reference.append(reference_point)
+            insulin_basal_reference.append(
+                (elapsed_minutes, row.insulin_basal_units)
+            )
             if row.carbs_grams > 0.0:
                 carb_point = (elapsed_minutes, row.carbs_grams)
                 carb_reference.append(carb_point)
@@ -213,6 +225,7 @@ class GlucoBenchLoader:
             measurement_reference=measurement_reference,
             carb_reference=carb_reference,
             carb_replay_events=carb_replay_events,
+            insulin_basal_reference=insulin_basal_reference,
             insulin_reference=insulin_reference,
         )
 
@@ -278,6 +291,11 @@ class GlucoBenchLoader:
                         user_id=user_id,
                         timestamp=timestamp,
                         glucose_mmol_l=glucose_mg_dl / MGDL_PER_MMOLL,
+                        insulin_basal_units=cls._parse_float(
+                            row.get("insulin_basal"),
+                            field_name="insulin_basal",
+                            line_number=line_number,
+                        ),
                         carbs_grams=carbs_grams,
                         insulin_bolus_units=cls._parse_float(
                             row.get("insulin_bolus"),

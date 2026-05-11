@@ -42,6 +42,8 @@ Primary use-cases
    - Load recorded CGM time series and associated meal events.
    - Run estimator to infer unobserved states (e.g., insulin) and compare
      simulated interstitial glucose with recorded CGM traces.
+   - If present in the dataset, use insulin therapy logs as historical
+     replay inputs or diagnostics, not as future information.
    - Use metrics (RMSE, hypoglycemia/hyperglycemia detection) for
      evaluation.
 
@@ -59,6 +61,9 @@ Data & events
 -------------
 - Expected inputs: CGM time series (timestamp, glucose) and event rows for
   meals (timestamp, carbs).
+- Optional or dataset-specific inputs: insulin therapy rows such as
+  `insulin_bolus` and `insulin_basal`, if they are semantically defined as
+  historical treatment signals.
 - Reference datasets are kept in the `data/` folder and should be used as
   canonical examples.
 

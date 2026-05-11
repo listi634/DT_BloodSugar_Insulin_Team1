@@ -45,8 +45,8 @@ Current interactions:
   and reset. Meal decisions are made via a modal prompt when meal events
   arrive.
 - Validation users: GUI can preload GlucoBench windows (user/start/end)
-  and replay carbohydrate events plus glucose measurements from dataset
-  timestamps
+  and replay carbohydrate events against the benchmark trace while the
+  plot overlays the recorded measurements
 - Machines/Libraries: SciPy ODE solver (`solve_ivp`), plotting/UI stack,
   EKF-based estimator scaffold
 - Databases/Sensors/Protocols: not connected in V1
@@ -118,32 +118,46 @@ sequenceDiagram
 - Validation mode:
   - Seeds initial simulated glucose from first selected actual value
   - Replays carbohydrate events as queued meal events
-  - Feeds the window glucose series into the estimator as a measurement
-    reference
+  - Runs the physiology model directly without feeding benchmark glucose
+    back into the plotted state
+  - Keeps dataset insulin logs available as historical therapy context
+    for replay diagnostics, without treating them as future data
+  - Can optionally apply historical insulin therapy step-by-step as an
+    exogenous replay input when comparing therapy-aware runs
   - Auto-stops at selected end timestamp span
   - Pauses when a meal arrives to allow continue vs. prediction
   - Prediction runs ahead without ingesting new benchmark data and
     leaves a background overlay on the plot
 
+### Current model shape
+- Meals are absorbed through a delayed internal pathway rather than
+  entering glucose instantly.
+- Insulin action is also delayed so the model reacts more gradually to
+  glucose excursions and replayed therapy.
+
 ### Not implemented in V1
 - Save/load simulation snapshots
 - Replay/rewind timeline controls
 
-The validation replay path treats benchmark glucose values as
-measurement inputs for the estimator and overlays the same reference in
-the plot. It does not overwrite the simulated glucose state directly.
+The validation replay path keeps the benchmark glucose series as plot
+context only and advances the simulated trace passively. That keeps the
+GUI line smooth and prevents the replay from snapping to measurement
+noise. If present, insulin therapy rows are retained as replay metadata
+so they can later be interpreted as causal therapy inputs or diagnostic
+traces, but they do not replace the simulated insulin state.
+Therapy-aware replay is optional and exists for comparison; passive
+validation remains the benchmark baseline for model fit.
 
 ## 8. Simulation Engine
 Engine characteristics:
 - Deterministic step order:
   1. Apply pending user events
-  2. Propagate the EKF prediction using the previous control input
-  3. Correct the estimate with the current measurement reference
-  4. Compute controller insulin rate from the corrected estimate
-  5. Store the corrected estimate in history
-- Validation orchestration keeps the same deterministic order by queuing
-  due carbs and due measurements before each `step()` call in the GUI
-  loop.
+  2. Advance the model state over one step
+  3. Compute controller insulin rate from the corrected estimate in
+     normal mode
+  4. Store the resulting state in history
+- Validation orchestration keeps the same deterministic event timing by
+  queuing due carbs before each `step()` call in the GUI loop.
 - Solver: `scipy.integrate.solve_ivp` (RK45/DOP853/BDF supported)
 - Time step: fixed logical step width `dt_minutes` per simulator step
 - Zero-crossing/event functions: possible via `IntegratorConfig.events`,
@@ -173,10 +187,9 @@ $$
 ```mermaid
 flowchart TD
   A[Simulation Step] --> B[Apply Pending Events]
-  B --> C[EKF Predict]
-  C --> D[EKF Update]
-  D --> E[Compute Insulin Rate]
-  E --> F[Append Snapshot to History]
+  B --> C[Advance Model State]
+  C --> D[Compute Insulin Rate in Normal Mode]
+  D --> E[Append Snapshot to History]
 ```
 
 ## 9. Record / Replay / Rewind

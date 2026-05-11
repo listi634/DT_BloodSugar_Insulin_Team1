@@ -75,6 +75,11 @@ G_{\mathrm{int}}
 \end{bmatrix}
 $$
 
+The current implementation also uses internal delayed compartments for
+meal absorption and insulin action. These are hidden model states that
+help smooth the replay trace while keeping the public simulator interface
+compact.
+
 Simulation metadata that also affects future behavior:
 - `time_minutes`
 - `sport_multiplier`
@@ -155,6 +160,25 @@ $$
 \frac{dG_{\mathrm{int}}}{dt} = \frac{G - G_{\mathrm{int}}}{\tau}
 $$
 
+Hidden internal compartments used by the current implementation:
+
+$$
+\frac{dC_{\mathrm{gut}}}{dt} = -k_{\mathrm{gut}}\,C_{\mathrm{gut}}
+$$
+
+$$
+\frac{dC_{\mathrm{int}}}{dt} = k_{\mathrm{gut}}\,C_{\mathrm{gut}} -
+k_{\mathrm{abs}}\,C_{\mathrm{int}}
+$$
+
+$$
+\frac{dA_I}{dt} = \frac{\max(0, I-I_b) - A_I}{\tau_I}
+$$
+
+where the glucose equation consumes the delayed intestinal carbohydrate
+pool and the delayed insulin-action term instead of reacting instantly to
+the raw insulin state.
+
 with parameter mapping:
 
 $$
@@ -204,3 +228,11 @@ $$
 - Meal response is tuned conservatively for benchmark replay; repeated
   meals are expected to accumulate gradually rather than spike the
   system in one step.
+- Dataset insulin therapy columns, when present, are replay context or
+  diagnostics; they are not the same thing as the model's internal
+  insulin state.
+- If therapy-aware replay is enabled, dataset insulin values can be used
+  as causal exogenous inputs for comparison, but that remains a replay
+  convention rather than a change to the physiology state definition.
+- The current model deliberately adds delayed absorption and delayed
+  insulin action to reduce replay spikes and improve CGM alignment.

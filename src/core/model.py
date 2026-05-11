@@ -46,7 +46,9 @@ class PhysiologyModel:
         glucose = float(values[0])
         insulin = float(values[1])
         carb_pool = float(values[2])
-        interstitium = float(values[3])
+        intestine_carb = float(values[3])
+        interstitium = float(values[4])
+        insulin_action = float(values[5])
 
         insulin_effect = max(0.0, insulin - config.insulin_basal)
         glucose_effect = max(0.0, glucose - config.glucose_basal)
@@ -56,8 +58,8 @@ class PhysiologyModel:
 
         d_glucose = (
             -config.glucose_decay * (glucose - config.glucose_basal)
-            - effective_sensitivity * insulin_effect
-            + config.carb_to_glucose_gain * carb_pool
+            - effective_sensitivity * insulin_action
+            + config.carb_to_glucose_gain * intestine_carb
         )
 
         d_insulin = (
@@ -67,13 +69,28 @@ class PhysiologyModel:
         )
 
         d_carb_pool = -config.meal_absorption_rate * carb_pool
+        d_intestine_carb = (
+            config.meal_absorption_rate * carb_pool
+            - config.intestine_absorption_rate * intestine_carb
+        )
 
         d_interstitium = (
             glucose - interstitium
         ) / config.interstitium_tau_minutes
 
+        d_insulin_action = (
+            insulin_effect - insulin_action
+        ) / config.insulin_action_tau_minutes
+
         return np.array(
-            [d_glucose, d_insulin, d_carb_pool, d_interstitium],
+            [
+                d_glucose,
+                d_insulin,
+                d_carb_pool,
+                d_intestine_carb,
+                d_interstitium,
+                d_insulin_action,
+            ],
             dtype=float,
         )
 
@@ -96,10 +113,14 @@ class PhysiologyModel:
             raise ValueError("state.insulin must be non-negative")
         if state.carb_pool < 0.0:
             raise ValueError("state.carb_pool must be non-negative")
+        if state.intestine_carb < 0.0:
+            raise ValueError("state.intestine_carb must be non-negative")
         if state.interstitium < 0.0:
             raise ValueError("state.interstitium must be non-negative")
         if state.insulin_rate < 0.0:
             raise ValueError("state.insulin_rate must be non-negative")
+        if state.insulin_action < 0.0:
+            raise ValueError("state.insulin_action must be non-negative")
         if state.sport_multiplier < 1.0:
             raise ValueError("state.sport_multiplier must be at least 1.0")
         if state.sport_minutes_remaining < 0.0:
@@ -118,7 +139,9 @@ class PhysiologyModel:
                 state.glucose,
                 state.insulin,
                 state.carb_pool,
+                state.intestine_carb,
                 state.interstitium,
+                state.insulin_action,
             ],
             dtype=float,
         )
@@ -147,11 +170,13 @@ class PhysiologyModel:
             config.max_insulin,
         )
         next_carb_pool = max(0.0, float(next_values[2]))
+        next_intestine_carb = max(0.0, float(next_values[3]))
         next_interstitium = _clamp(
-            float(next_values[3]),
+            float(next_values[4]),
             config.min_glucose,
             config.max_glucose,
         )
+        next_insulin_action = max(0.0, float(next_values[5]))
 
         next_sport_remaining = max(
             0.0,
@@ -166,8 +191,10 @@ class PhysiologyModel:
             glucose=next_glucose,
             insulin=next_insulin,
             carb_pool=next_carb_pool,
+            intestine_carb=next_intestine_carb,
             interstitium=next_interstitium,
             insulin_rate=state.insulin_rate,
+            insulin_action=next_insulin_action,
             sport_multiplier=next_sport_multiplier,
             sport_minutes_remaining=next_sport_remaining,
         )
