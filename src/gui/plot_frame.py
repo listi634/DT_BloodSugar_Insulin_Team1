@@ -67,6 +67,15 @@ class PlotFrame(ctk.CTkFrame):
             linewidth=2.0,
             label="Simulated Insulin",
         )[0]
+        self.line_insulin_smoothed = self.ax_insulin.plot(
+            [],
+            [],
+            color="#3C6E71",
+            linewidth=2.0,
+            linestyle="--",
+            alpha=0.8,
+            label="Smoothed Insulin",
+        )[0]
         self.line_insulin_prediction = self.ax_insulin.plot(
             [],
             [],
@@ -115,6 +124,8 @@ class PlotFrame(ctk.CTkFrame):
         prediction_time: list[float] | None = None,
         prediction_glucose: list[float] | None = None,
         prediction_insulin: list[float] | None = None,
+        smoothed_insulin_time: list[float] | None = None,
+        smoothed_insulin_values: list[float] | None = None,
     ) -> None:
         """Refresh line data and autoscale axes."""
         if not time_minutes:
@@ -132,6 +143,12 @@ class PlotFrame(ctk.CTkFrame):
         self.line_glucose_actual.set_data(glucose_ref_time, glucose_ref_values)
         self.line_carb_reference.set_data(carb_ref_time, carb_ref_values)
         self.line_insulin.set_data(time_minutes, insulin_values)
+        if smoothed_insulin_time is not None:
+            smoothed_insulin_values = smoothed_insulin_values or []
+            self.line_insulin_smoothed.set_data(
+                smoothed_insulin_time,
+                smoothed_insulin_values,
+            )
 
         if prediction_time is not None:
             prediction_glucose = prediction_glucose or []
@@ -169,4 +186,20 @@ class PlotFrame(ctk.CTkFrame):
         self.line_glucose_prediction.set_data([], [])
         self.line_insulin_prediction.set_data([], [])
         self._refresh_glucose_legend()
+        self.canvas.draw_idle()  # type: ignore[no-untyped-call]
+
+    def set_smoothed_overlay(
+        self,
+        time_minutes: list[float],
+        insulin_values: list[float],
+    ) -> None:
+        """Set the smoothed insulin overlay data."""
+        self.line_insulin_smoothed.set_data(time_minutes, insulin_values)
+        self.ax_insulin.legend(loc="upper right")
+        self.canvas.draw_idle()  # type: ignore[no-untyped-call]
+
+    def clear_smoothed_overlay(self) -> None:
+        """Clear any smoothed overlay data from the charts."""
+        self.line_insulin_smoothed.set_data([], [])
+        self.ax_insulin.legend(loc="upper right")
         self.canvas.draw_idle()  # type: ignore[no-untyped-call]

@@ -157,3 +157,23 @@ def test_measurement_input_keeps_meal_replay_available() -> None:
 
     assert snapshot.time_minutes == ModelConfig().dt_minutes
     assert snapshot.carb_pool > 0.0
+
+
+def test_step_without_controller_keeps_insulin_rate() -> None:
+    """Controller can be disabled for replay/inference steps."""
+    simulator = _build_simulator()
+
+    snapshot = simulator.step(measured_interstitium=5.0, use_controller=False)
+
+    assert snapshot.insulin_rate == 0.0
+
+
+def test_bolus_event_increases_insulin_state() -> None:
+    """Queued bolus should raise insulin state or infusion rate."""
+    simulator = _build_simulator()
+    baseline = simulator.current_state.insulin
+
+    simulator.queue_bolus(units=5.0)
+    snapshot = simulator.step()
+
+    assert snapshot.insulin > baseline

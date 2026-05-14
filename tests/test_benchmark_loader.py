@@ -144,3 +144,30 @@ def test_build_validation_window_rejects_invalid_inputs(
             start_day="2024-01-02",
             end_day="2024-01-01",
         )
+
+
+def test_build_validation_window_extracts_insulin_bolus(
+    tmp_path: Path,
+) -> None:
+    """Insulin bolus entries should be mapped into insulin_reference."""
+    csv_path = tmp_path / "sample.csv"
+    _write_csv(
+        csv_path,
+        "\n".join(
+            [
+                "user_id,timestamp,glucose,carbs,insulin_bolus",
+                "U001,2024-01-01 00:00:00,126,0,0",
+                "U001,2024-01-01 00:10:00,130,0,1.5",
+                "U001,2024-01-01 00:20:00,140,0,0",
+            ]
+        ),
+    )
+
+    loader = GlucoBenchLoader(csv_path)
+    window = loader.build_validation_window(
+        user_id="U001",
+        start_timestamp="2024-01-01 00:00:00",
+        end_timestamp="2024-01-01 00:20:00",
+    )
+
+    assert window.insulin_reference == [(10.0, 1.5)]

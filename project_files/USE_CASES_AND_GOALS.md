@@ -57,8 +57,9 @@ Primary use-cases
 
 Data & events
 -------------
-- Expected inputs: CGM time series (timestamp, glucose) and event rows for
-  meals (timestamp, carbs).
+- Expected inputs: CGM time series (timestamp, glucose), event rows for
+  meals (timestamp, carbs), and recorded insulin bolus entries when
+  available (timestamp, bolus units).
 - Reference datasets are kept in the `data/` folder and should be used as
   canonical examples.
 

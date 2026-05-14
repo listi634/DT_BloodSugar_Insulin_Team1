@@ -7,6 +7,7 @@ import numpy as np
 
 from src.core.controller import ProportionalController
 from src.core.model import PhysiologyModel
+from src.core.estimator import EstimatorTraceStep
 from src.core.estimator import ExtendedKalmanFilterEstimator
 from src.core.state import ControllerConfig
 from src.core.state import EstimatorConfig
@@ -15,6 +16,7 @@ from src.core.state import ModelConfig
 from src.core.state import PendingEvents
 from src.core.state import SimulationSnapshot
 from src.core.state import SimulationState
+from src.core.state import BolusEvent
 from src.core.state import SportEvent
 
 
@@ -57,6 +59,7 @@ class GlucoseSimulator:
         self._history: list[SimulationSnapshot] = [
             self._to_snapshot(self._state)
         ]
+        self._estimator_trace: list[EstimatorTraceStep] = []
 
     @property
     def current_state(self) -> SimulationState:
@@ -73,12 +76,27 @@ class GlucoseSimulator:
         """Simulation history as immutable snapshots."""
         return list(self._history)
 
-    def export_snapshot(self) -> "SimulatorSnapshot":
-        """Capture simulator state and covariance for later restore."""
+    def get_estimator_trace(self) -> list[EstimatorTraceStep]:
+        """Return recorded EKF prediction/update trace steps."""
+        return list(self._estimator_trace)
+
+    def export_snapshot(
+        self,
+        mode: str = "standard",
+        bolus_description: str = "none",
+    ) -> "SimulatorSnapshot":
+        """Capture simulator state and covariance for later restore.
+
+        Args:
+            mode: Short label describing replay/prediction intent.
+            bolus_description: Human-readable description of bolus inputs.
+        """
         return SimulatorSnapshot(
             state=replace(self._state),
             estimator_covariance=self._estimator.covariance,
             history=list(self._history),
+            mode=mode,
+            bolus_description=bolus_description,
         )
 
     def restore_snapshot(self, snapshot: "SimulatorSnapshot") -> None:
@@ -88,6 +106,7 @@ class GlucoseSimulator:
         self._estimator.set_covariance(snapshot.estimator_covariance)
         self._pending.clear()
         self._history = list(snapshot.history)
+        self._estimator_trace = []
 
     def queue_meal(self, carbs: float) -> None:
         """Queue meal carbohydrates to be applied at next step.
@@ -101,6 +120,20 @@ class GlucoseSimulator:
         if carbs <= 0.0:
             raise ValueError("Meal carbs must be positive")
         self._pending.meal_carbs += carbs
+
+    def queue_bolus(
+        self, units: float, over_minutes: float | None = None
+    ) -> None:
+        """Queue an insulin bolus to be applied at the next step.
+
+        Args:
+            units: Insulin amount to administer (same units as state.insulin).
+            over_minutes: If provided, distribute units as an infusion over
+                this many minutes; if None apply as an instantaneous bolus.
+        """
+        bolus = BolusEvent(units=units, over_minutes=over_minutes)
+        bolus.validate()
+        self._pending.bolus_event = bolus
 
     def queue_sport(self, multiplier: float, duration_minutes: float) -> None:
         """Queue a temporary insulin-sensitivity boost event."""
@@ -117,30 +150,47 @@ class GlucoseSimulator:
         self._estimator.set_state(self._state)
         self._pending.clear()
         self._history = [self._to_snapshot(self._state)]
+        self._estimator_trace = []
 
     def step(
         self,
         measured_interstitium: float | None = None,
+        use_controller: bool = True,
     ) -> SimulationSnapshot:
         """Execute one deterministic step of the simulation pipeline."""
         self._apply_pending_events()
         self._estimator.set_state(self._state)
-        self._estimator.predict(
-            dt_minutes=self._model_config.dt_minutes,
-            control_input=self._state.insulin_rate,
+        predicted_state, transition, predicted_covariance = (
+            self._estimator.predict_with_details(
+                dt_minutes=self._model_config.dt_minutes,
+                control_input=self._state.insulin_rate,
+            )
         )
         if measured_interstitium is None:
             measured_interstitium = self._state.interstitium
-        self._estimator.update(measured_interstitium)
+        updated_state = self._estimator.update(measured_interstitium)
+        updated_covariance = self._estimator.covariance
 
         estimate = self._estimator.current_state
-        self._state.insulin_rate = self._controller.compute_insulin_rate(
-            glucose=estimate.interstitium,
-            current_rate=self._state.insulin_rate,
-            config=self._controller_config,
-        )
+        if use_controller:
+            self._state.insulin_rate = self._controller.compute_insulin_rate(
+                glucose=estimate.interstitium,
+                current_rate=self._state.insulin_rate,
+                config=self._controller_config,
+            )
+        # Merge estimator state but preserve any insulin_rate set by controller
         self._state = replace(estimate, insulin_rate=self._state.insulin_rate)
         self._estimator.set_state(self._state)
+
+        self._estimator_trace.append(
+            EstimatorTraceStep(
+                predicted_state=predicted_state,
+                predicted_covariance=predicted_covariance,
+                updated_state=updated_state,
+                updated_covariance=updated_covariance,
+                transition=transition,
+            )
+        )
 
         snapshot = self._to_snapshot(self._state)
         self._history.append(snapshot)
@@ -169,6 +219,16 @@ class GlucoseSimulator:
             )
             self._state.sport_minutes_remaining += sport_event.duration_minutes
 
+        if self._pending.bolus_event is not None:
+            bolus = self._pending.bolus_event
+            # Instantaneous bolus: add directly to insulin state
+            if bolus.over_minutes is None:
+                self._state.insulin += bolus.units
+            else:
+                # Short infusion: convert units over minutes to per-minute
+                rate = bolus.units / bolus.over_minutes
+                self._state.insulin_rate += rate
+
         self._pending.clear()
 
     @staticmethod
@@ -193,3 +253,5 @@ class SimulatorSnapshot:
     state: SimulationState
     estimator_covariance: np.ndarray
     history: list[SimulationSnapshot]
+    mode: str = "standard"
+    bolus_description: str = "none"

@@ -9,10 +9,12 @@ import customtkinter as ctk
 
 from src.core.benchmark_loader import GlucoBenchLoader
 from src.core.benchmark_loader import ValidationWindowData
+from src.core.estimator import ExtendedKalmanFilterEstimator
 from src.core.simulator import GlucoseSimulator
 from src.core.simulator import SimulatorSnapshot
 from src.core.state import IntegratorMethod
 from src.core.utilities import collect_due_carb_events
+from src.core.utilities import collect_due_insulin_events
 from src.gui.control_panel import ControlPanel
 from src.gui.plot_frame import PlotFrame
 
@@ -31,8 +33,10 @@ class ValidationRunState:
     measurement_reference: list[tuple[float, float]] | None = None
     carb_reference: list[tuple[float, float]] | None = None
     carb_replay_events: list[tuple[float, float]] | None = None
+    insulin_reference: list[tuple[float, float]] | None = None
     measurement_replay_index: int = 0
     replay_index: int = 0
+    insulin_replay_index: int = 0
 
     @classmethod
     def from_window(cls, window: ValidationWindowData) -> "ValidationRunState":
@@ -48,8 +52,10 @@ class ValidationRunState:
             measurement_reference=list(window.measurement_reference),
             carb_reference=list(window.carb_reference),
             carb_replay_events=list(window.carb_replay_events),
+            insulin_reference=list(window.insulin_reference),
             measurement_replay_index=0,
             replay_index=0,
+            insulin_replay_index=0,
         )
 
 
@@ -59,6 +65,14 @@ class PredictionOverlay:
 
     time_minutes: list[float]
     glucose: list[float]
+    insulin: list[float]
+
+
+@dataclass(frozen=True)
+class SmoothedOverlay:
+    """Stored smoothed insulin series for replay visualization."""
+
+    time_minutes: list[float]
     insulin: list[float]
 
 
@@ -107,8 +121,10 @@ class DigitalTwinApp(ctk.CTk):
         self._validation = ValidationRunState()
         self._benchmark_loader: GlucoBenchLoader | None = None
         self._pending_meal_carbs: float | None = None
+        self._pending_bolus_units: list[float] = []
         self._premeal_snapshot: SimulatorSnapshot | None = None
         self._prediction_overlay: PredictionOverlay | None = None
+        self._smoothed_overlay: SmoothedOverlay | None = None
         self._awaiting_resume = False
         self._prediction_horizon_minutes = 1200.0
 
@@ -128,6 +144,7 @@ class DigitalTwinApp(ctk.CTk):
             on_method_change=self._on_integrator_method_change,
             on_toggle_run=self._toggle_run,
             on_reset=self._on_reset,
+            on_speed_change=self._on_speed_change,
             on_validation_user_change=self._on_validation_user_change,
             on_validation_start_change=self._on_validation_start_change,
             on_validation_end_change=self._on_validation_end_change,
@@ -210,10 +227,13 @@ class DigitalTwinApp(ctk.CTk):
             self._integrator_method, None
         )
         self._pending_meal_carbs = None
+        self._pending_bolus_units = []
         self._premeal_snapshot = None
         self._prediction_overlay = None
+        self._smoothed_overlay = None
         self._awaiting_resume = False
         self.plot_frame.clear_prediction_overlay()
+        self.plot_frame.clear_smoothed_overlay()
         self.control_panel.set_validation_status(
             "No validation window loaded."
         )
@@ -232,10 +252,13 @@ class DigitalTwinApp(ctk.CTk):
         self._running = False
         self.control_panel.set_running(False)
         self._pending_meal_carbs = None
+        self._pending_bolus_units = []
         self._premeal_snapshot = None
         self._prediction_overlay = None
+        self._smoothed_overlay = None
         self._awaiting_resume = False
         self.plot_frame.clear_prediction_overlay()
+        self.plot_frame.clear_smoothed_overlay()
         self._integrator_method = selected_method
         if self._validation.loaded:
             self._simulator = self._simulator_builder(
@@ -271,22 +294,31 @@ class DigitalTwinApp(ctk.CTk):
         if not self._running:
             return
 
+        due_insulin: list[float] = []
         if self._validation.loaded:
+            due_insulin = self._collect_validation_insulin()
             due_carbs = self._collect_validation_carbs()
             if due_carbs:
-                self._pause_for_meal(due_carbs)
+                self._pause_for_meal(due_carbs, due_insulin)
                 return
+            if due_insulin:
+                self._apply_bolus_units(due_insulin)
 
         measured_interstitium = None
         if self._validation.loaded:
             measured_interstitium = self._inject_validation_measurement()
 
-        self._simulator.step(measured_interstitium=measured_interstitium)
+        use_controller = not self._validation.loaded
+        self._simulator.step(
+            measured_interstitium=measured_interstitium,
+            use_controller=use_controller,
+        )
         self._refresh_view()
 
         if self._validation.loaded and self._is_validation_finished():
             self._running = False
             self.control_panel.set_running(False)
+            self._refresh_smoothed_overlay()
             self._set_status(
                 "Validation run finished at selected end timestamp."
             )
@@ -321,6 +353,16 @@ class DigitalTwinApp(ctk.CTk):
             prediction_insulin=(
                 self._prediction_overlay.insulin
                 if self._prediction_overlay
+                else None
+            ),
+            smoothed_insulin_time=(
+                self._smoothed_overlay.time_minutes
+                if self._smoothed_overlay
+                else None
+            ),
+            smoothed_insulin_values=(
+                self._smoothed_overlay.insulin
+                if self._smoothed_overlay
                 else None
             ),
         )
@@ -431,8 +473,10 @@ class DigitalTwinApp(ctk.CTk):
         self._pending_meal_carbs = None
         self._premeal_snapshot = None
         self._prediction_overlay = None
+        self._smoothed_overlay = None
         self._awaiting_resume = False
         self.plot_frame.clear_prediction_overlay()
+        self.plot_frame.clear_smoothed_overlay()
 
         self._validation = ValidationRunState.from_window(window)
         self._simulator = self._simulator_builder(
@@ -462,6 +506,29 @@ class DigitalTwinApp(ctk.CTk):
         self._validation.replay_index = next_index
         return due_carbs
 
+    def _on_speed_change(self, steps_per_second: int) -> None:
+        """Update the step interval and reschedule if running."""
+        if steps_per_second <= 0:
+            return
+        self._step_interval_ms = max(1, int(round(1000 / steps_per_second)))
+        if self._running:
+            self._cancel_schedule()
+            self._schedule_next_step()
+
+    def _collect_validation_insulin(self) -> list[float]:
+        """Collect insulin bolus events due for the current time."""
+        if self._validation.insulin_reference is None:
+            return []
+
+        current_time = self._simulator.current_state.time_minutes
+        due_units, next_index = collect_due_insulin_events(
+            self._validation.insulin_reference,
+            self._validation.insulin_replay_index,
+            current_time,
+        )
+        self._validation.insulin_replay_index = next_index
+        return due_units
+
     def _inject_validation_measurement(self) -> float | None:
         """Return the latest measurement due for the current tick."""
         if self._validation.measurement_reference is None:
@@ -483,7 +550,11 @@ class DigitalTwinApp(ctk.CTk):
             >= self._validation.duration_minutes
         )
 
-    def _pause_for_meal(self, due_carbs: list[float]) -> None:
+    def _pause_for_meal(
+        self,
+        due_carbs: list[float],
+        due_insulin: list[float],
+    ) -> None:
         """Pause simulation and prompt for meal decision."""
         total_carbs = sum(due_carbs)
         if total_carbs <= 0.0:
@@ -492,8 +563,12 @@ class DigitalTwinApp(ctk.CTk):
         self._running = False
         self.control_panel.set_running(False)
         self._cancel_schedule()
-        self._premeal_snapshot = self._simulator.export_snapshot()
+        self._premeal_snapshot = self._simulator.export_snapshot(
+            mode="replay",
+            bolus_description="none",
+        )
         self._pending_meal_carbs = total_carbs
+        self._pending_bolus_units = list(due_insulin)
 
         choice = self._prompt_meal_action(total_carbs)
         if choice == "continue":
@@ -557,17 +632,49 @@ class DigitalTwinApp(ctk.CTk):
             return
         try:
             self._simulator.queue_meal(self._pending_meal_carbs)
+            self._apply_bolus_units(self._pending_bolus_units)
         except ValueError as exc:
             self._set_status(str(exc))
             return
 
         self._pending_meal_carbs = None
+        self._pending_bolus_units = []
         self._premeal_snapshot = None
         self._awaiting_resume = False
         self._running = True
         self.control_panel.set_running(True)
         self._set_status("Meal applied. Simulation running.")
         self._schedule_next_step()
+
+    def _apply_bolus_units(self, units_list: list[float]) -> None:
+        """Queue each pending bolus unit value into the simulator."""
+        for units in units_list:
+            if units <= 0.0:
+                continue
+            self._simulator.queue_bolus(units)
+
+    def _refresh_smoothed_overlay(self) -> None:
+        """Compute and store RTS-smoothed insulin overlay after replay."""
+        trace = self._simulator.get_estimator_trace()
+        if not trace:
+            self._smoothed_overlay = None
+            self.plot_frame.clear_smoothed_overlay()
+            return
+
+        smoothed_states = ExtendedKalmanFilterEstimator.rts_smooth(trace)
+        history = self._simulator.history
+        time_minutes = [snapshot.time_minutes for snapshot in history[1:]]
+        insulin_values = [state.insulin for state in smoothed_states]
+        if len(time_minutes) != len(insulin_values):
+            self._smoothed_overlay = None
+            self.plot_frame.clear_smoothed_overlay()
+            return
+
+        self._smoothed_overlay = SmoothedOverlay(
+            time_minutes=time_minutes,
+            insulin=insulin_values,
+        )
+        self.plot_frame.set_smoothed_overlay(time_minutes, insulin_values)
 
     def _run_prediction(self, meal_carbs: float) -> None:
         """Run a prediction horizon and store its overlay trace."""
@@ -581,6 +688,7 @@ class DigitalTwinApp(ctk.CTk):
             + self._prediction_horizon_minutes
         )
         self._skip_validation_meals_until(prediction_end)
+        self._skip_validation_insulin_until(prediction_end)
 
         dt_minutes = self._simulator.model_config.dt_minutes
         steps = int(self._prediction_horizon_minutes / dt_minutes)
@@ -591,8 +699,12 @@ class DigitalTwinApp(ctk.CTk):
         snapshot = self._premeal_snapshot
         try:
             self._simulator.queue_meal(meal_carbs)
+            self._apply_bolus_units(self._pending_bolus_units)
             for _ in range(steps):
-                self._simulator.step(measured_interstitium=None)
+                self._simulator.step(
+                    measured_interstitium=None,
+                    use_controller=False,
+                )
         except ValueError as exc:
             self._set_status(str(exc))
             self._simulator.restore_snapshot(snapshot)
@@ -649,3 +761,15 @@ class DigitalTwinApp(ctk.CTk):
             end_time,
         )
         self._validation.replay_index = next_index
+
+    def _skip_validation_insulin_until(self, end_time: float) -> None:
+        """Advance insulin replay index to skip boluses in prediction."""
+        if self._validation.insulin_reference is None:
+            return
+
+        _, next_index = collect_due_insulin_events(
+            self._validation.insulin_reference,
+            self._validation.insulin_replay_index,
+            end_time,
+        )
+        self._validation.insulin_replay_index = next_index

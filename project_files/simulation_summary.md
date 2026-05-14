@@ -115,9 +115,11 @@ sequenceDiagram
 - Stop/Pause: handled by GUI stop of scheduling loop
 - Step: `GlucoseSimulator.step()`
 - Reset to initial conditions: `GlucoseSimulator.reset()`
+- Speed slider: adjusts GUI tick rate (steps/sec); max speed is 1 ms/step
 - Validation mode:
   - Seeds initial simulated glucose from first selected actual value
   - Replays carbohydrate events as queued meal events
+  - Replays recorded insulin bolus events as queued bolus events
   - Feeds the window glucose series into the estimator as a measurement
     reference
   - Auto-stops at selected end timestamp span
@@ -188,3 +190,32 @@ flowchart TD
 - Event buffering is step-based; intra-step event timing is not modeled
 - Benchmark meals during prediction are ignored by the simulation
 - Real-time guarantees depend on GUI scheduling and host performance
+
+## 11. Replay vs Prediction (Inference / What‑If)
+
+The simulator supports two complementary workflows that are important
+for validation and for prospective what‑if forecasting:
+
+- Replay / Inference: controller actions are disabled and the EKF is
+  used to infer latent insulin dynamics from measured interstitial
+  glucose. This mode is intended for post‑hoc reconstruction of
+  insulin with documented estimator tuning (increased insulin process
+  noise) and optional offline smoothing. The GUI overlays the RTS
+  smoothed insulin trace after replay completion.
+- Prediction / What‑If: used when simulating a future scenario (for
+  example after a queued meal). Predictions run open‑loop: they accept
+  an explicit bolus event (recorded or calculated) applied before the
+  model propagation and do not ingest further benchmark measurements.
+
+Implementation notes:
+
+- `GlucoseSimulator.step()` may be called with `use_controller=False`
+  to run replay/inference.
+- A discrete `queue_bolus()` event is available to model an
+  administrated insulin bolus for prediction runs; boluses are applied
+  before EKF prediction so the estimator and model see the input.
+- All prediction/replay runs should include snapshot metadata (mode,
+  bolus assumptions, estimator tuning) for reproducibility.
+
+Update requirement: keep this section aligned with the `Simulator` and
+`Estimator` docstrings when further refactors are made.

@@ -1,5 +1,6 @@
 """Extended Kalman filter scaffold for glucose state correction."""
 
+from dataclasses import dataclass
 from dataclasses import replace
 
 import numpy as np
@@ -8,6 +9,17 @@ from src.core.model import PhysiologyModel
 from src.core.state import EstimatorConfig
 from src.core.state import ModelConfig
 from src.core.state import SimulationState
+
+
+@dataclass(frozen=True)
+class EstimatorTraceStep:
+    """Container for EKF prediction/update data used in smoothing."""
+
+    predicted_state: SimulationState
+    predicted_covariance: np.ndarray
+    updated_state: SimulationState
+    updated_covariance: np.ndarray
+    transition: np.ndarray
 
 
 class ExtendedKalmanFilterEstimator:
@@ -61,6 +73,18 @@ class ExtendedKalmanFilterEstimator:
         control_input: float,
     ) -> SimulationState:
         """Advance the state estimate with the process model."""
+        predicted_state, _, _ = self.predict_with_details(
+            dt_minutes=dt_minutes,
+            control_input=control_input,
+        )
+        return predicted_state
+
+    def predict_with_details(
+        self,
+        dt_minutes: float,
+        control_input: float,
+    ) -> tuple[SimulationState, np.ndarray, np.ndarray]:
+        """Predict state and return transition and covariance details."""
         if dt_minutes <= 0.0:
             raise ValueError("dt_minutes must be positive")
         if control_input < 0.0:
@@ -81,7 +105,67 @@ class ExtendedKalmanFilterEstimator:
         )
         self._symmetrize_covariance()
         self._state = predicted_state
-        return replace(self._state)
+        return replace(self._state), transition, self._covariance.copy()
+
+    @staticmethod
+    def rts_smooth(
+        steps: list[EstimatorTraceStep],
+    ) -> list[SimulationState]:
+        """Apply RTS smoothing to a recorded EKF trace.
+
+        Args:
+            steps: Ordered EKF trace steps (prediction then update).
+
+        Returns:
+            Smoothed state sequence aligned to the trace steps.
+
+        Raises:
+            ValueError: If steps are empty or malformed.
+        """
+        if not steps:
+            raise ValueError("steps must be non-empty")
+
+        smoothed_states: list[SimulationState] = [steps[-1].updated_state]
+        smoothed_covariance = steps[-1].updated_covariance.copy()
+
+        for index in range(len(steps) - 2, -1, -1):
+            current = steps[index]
+            next_step = steps[index + 1]
+
+            predicted_covariance = next_step.predicted_covariance
+            transition = next_step.transition
+            if predicted_covariance.shape != (4, 4):
+                raise ValueError("predicted_covariance must be 4x4")
+
+            gain = (
+                current.updated_covariance
+                @ transition.T
+                @ np.linalg.pinv(predicted_covariance)
+            )
+
+            correction = ExtendedKalmanFilterEstimator._state_to_vector(
+                smoothed_states[0]
+            ) - ExtendedKalmanFilterEstimator._state_to_vector(
+                next_step.predicted_state
+            )
+
+            current_vector = ExtendedKalmanFilterEstimator._state_to_vector(
+                current.updated_state
+            )
+            smoothed_vector = current_vector + gain @ correction
+
+            smoothed_covariance = (
+                current.updated_covariance
+                + gain @ (smoothed_covariance - predicted_covariance) @ gain.T
+            )
+
+            smoothed_state = ExtendedKalmanFilterEstimator._vector_to_state(
+                smoothed_vector,
+                current.updated_state,
+            )
+            smoothed_states.insert(0, smoothed_state)
+
+        return smoothed_states
 
     def update(self, measured_interstitium: float) -> SimulationState:
         """Correct the estimate with a measured interstitial glucose value."""
@@ -180,7 +264,12 @@ class ExtendedKalmanFilterEstimator:
     def _process_noise_covariance(self) -> np.ndarray:
         """Build a diagonal process noise matrix with safe defaults."""
         scale = self._config.process_noise_scale
-        return np.eye(4, dtype=float) * scale
+        insulin_scale = self._config.insulin_process_noise
+        if insulin_scale is None:
+            insulin_scale = scale
+        return np.diag(
+            [scale, insulin_scale, scale, scale],
+        ).astype(float)
 
     def _symmetrize_covariance(self) -> None:
         """Keep covariance symmetric and numerically well-behaved."""

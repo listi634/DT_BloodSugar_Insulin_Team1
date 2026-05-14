@@ -76,6 +76,7 @@ class EstimatorConfig:
 
     initial_covariance: float = 1.0
     process_noise_scale: float = 0.02
+    insulin_process_noise: float | None = None
     measurement_noise_variance: float = 0.09
     finite_difference_step: float = 1e-4
     minimum_covariance: float = 1e-6
@@ -86,6 +87,11 @@ class EstimatorConfig:
             raise ValueError("initial_covariance must be positive")
         if self.process_noise_scale < 0.0:
             raise ValueError("process_noise_scale must be non-negative")
+        if (
+            self.insulin_process_noise is not None
+            and self.insulin_process_noise < 0.0
+        ):
+            raise ValueError("insulin_process_noise must be non-negative")
         if self.measurement_noise_variance <= 0.0:
             raise ValueError("measurement_noise_variance must be positive")
         if self.finite_difference_step <= 0.0:
@@ -133,17 +139,42 @@ class SportEvent:
             raise ValueError("sport duration must be positive")
 
 
+@dataclass(frozen=True)
+class BolusEvent:
+    """Discrete or short infusion insulin administration request.
+
+    Attributes:
+        units: Insulin amount added to the insulin state (same units as
+            `SimulationState.insulin`).
+        over_minutes: If provided, distribute `units` as a continuous
+            infusion over this many minutes; if `None` treat as an
+            instantaneous bolus (impulse added to `insulin`).
+    """
+
+    units: float
+    over_minutes: float | None = None
+
+    def validate(self) -> None:
+        """Validate bolus values."""
+        if self.units <= 0.0:
+            raise ValueError("bolus units must be positive")
+        if self.over_minutes is not None and self.over_minutes <= 0.0:
+            raise ValueError("over_minutes must be positive when provided")
+
+
 @dataclass
 class PendingEvents:
     """Buffered user events to apply at the next simulation step."""
 
     meal_carbs: float = 0.0
     sport_event: SportEvent | None = None
+    bolus_event: BolusEvent | None = None
 
     def clear(self) -> None:
         """Clear all pending inputs after event application."""
         self.meal_carbs = 0.0
         self.sport_event = None
+        self.bolus_event = None
 
 
 @dataclass

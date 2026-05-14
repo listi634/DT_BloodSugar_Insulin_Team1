@@ -14,6 +14,7 @@ class ControlPanel(ctk.CTkFrame):
         on_method_change: Callable[[str], None],
         on_toggle_run: Callable[[], None],
         on_reset: Callable[[], None],
+        on_speed_change: Callable[[int], None],
         on_validation_user_change: Callable[[str], None],
         on_validation_start_change: Callable[[str], None],
         on_validation_end_change: Callable[[str], None],
@@ -24,6 +25,7 @@ class ControlPanel(ctk.CTkFrame):
         self._on_method_change = on_method_change
         self._on_toggle_run = on_toggle_run
         self._on_reset = on_reset
+        self._on_speed_change = on_speed_change
         self._on_validation_user_change = on_validation_user_change
         self._on_validation_start_change = on_validation_start_change
         self._on_validation_end_change = on_validation_end_change
@@ -68,11 +70,30 @@ class ControlPanel(ctk.CTkFrame):
             row=3, column=0, sticky="ew", padx=12, pady=(0, 12)
         )
 
+        ctk.CTkLabel(self, text="Speed (steps/sec)").grid(
+            row=4, column=0, sticky="w", padx=12, pady=(0, 4)
+        )
+        self.speed_value_label = ctk.CTkLabel(self, text="5")
+        self.speed_value_label.grid(
+            row=5, column=0, sticky="e", padx=12, pady=(0, 4)
+        )
+        self.speed_slider = ctk.CTkSlider(
+            self,
+            from_=1,
+            to=1000,
+            number_of_steps=999,
+            command=self._handle_speed_change,
+        )
+        self.speed_slider.set(5)
+        self.speed_slider.grid(
+            row=6, column=0, sticky="ew", padx=12, pady=(0, 12)
+        )
+
     def _build_validation_controls(self) -> None:
         """Create GlucoBench validation card and selectors."""
         self.validation_frame = ctk.CTkFrame(self)
         self.validation_frame.grid(
-            row=4,
+            row=7,
             column=0,
             sticky="ew",
             padx=12,
@@ -206,6 +227,11 @@ class ControlPanel(ctk.CTkFrame):
         """Update run button label to reflect simulation state."""
         self.run_button.configure(text="Pause" if running else "Run")
 
+    def set_speed_value(self, value: int) -> None:
+        """Update speed label and slider position."""
+        self.speed_value_label.configure(text=str(value))
+        self.speed_slider.set(value)
+
     def get_validation_selection(self) -> tuple[str, str, str]:
         """Return selected user/start/end values from validation controls."""
         return (
@@ -225,3 +251,9 @@ class ControlPanel(ctk.CTkFrame):
     def _handle_validation_end_change(self, selected_end: str) -> None:
         """Dispatch end selector callback."""
         self._on_validation_end_change(selected_end)
+
+    def _handle_speed_change(self, value: float) -> None:
+        """Dispatch speed change with integer steps per second."""
+        speed_steps = max(1, int(round(value)))
+        self.set_speed_value(speed_steps)
+        self._on_speed_change(speed_steps)
