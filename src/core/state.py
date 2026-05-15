@@ -14,11 +14,12 @@ class ModelConfig:
     """Physiology model parameters and safety bounds."""
 
     dt_minutes: float = 1.0
+    plasma_volume_ml: float = 12000.0
     glucose_basal: float = 5.0
-    insulin_basal: float = 10.0
+    insulin_basal: float = 0.0
     glucose_decay: float = 0.015
-    insulin_decay: float = 0.05
-    insulin_sensitivity: float = 0.06
+    insulin_decay: float = 0.1
+    insulin_sensitivity: float = 0.0006
     insulin_response_gain: float = 0.32
     stomach_tau_minutes: float = 18.0
     intestine_tau_minutes: float = 40.0
@@ -35,10 +36,12 @@ class ModelConfig:
         """Validate model parameters for physically meaningful values."""
         if self.dt_minutes <= 0.0:
             raise ValueError("dt_minutes must be positive")
+        if self.plasma_volume_ml <= 0.0:
+            raise ValueError("plasma_volume_ml must be positive")
         if self.glucose_basal <= 0.0:
             raise ValueError("glucose_basal must be positive")
-        if self.insulin_basal <= 0.0:
-            raise ValueError("insulin_basal must be positive")
+        if self.insulin_basal < 0.0:
+            raise ValueError("insulin_basal must be non-negative")
         if self.stomach_tau_minutes <= 0.0:
             raise ValueError("stomach_tau_minutes must be positive")
         if self.intestine_tau_minutes <= 0.0:
@@ -53,6 +56,11 @@ class ModelConfig:
             raise ValueError("min_glucose must be lower than max_glucose")
         if self.min_insulin >= self.max_insulin:
             raise ValueError("min_insulin must be lower than max_insulin")
+
+    @property
+    def unit_to_uu_per_ml(self) -> float:
+        """Return the plasma-concentration scaling for one insulin unit."""
+        return 1_000_000.0 / self.plasma_volume_ml
 
 
 @dataclass(frozen=True)
@@ -153,11 +161,10 @@ class BolusEvent:
     """Discrete or short infusion insulin administration request.
 
     Attributes:
-        units: Insulin amount added to the insulin state (same units as
-            `SimulationState.insulin`).
+        units: Insulin amount in pump units (U).
         over_minutes: If provided, distribute `units` as a continuous
             infusion over this many minutes; if `None` treat as an
-            instantaneous bolus (impulse added to `insulin`).
+            instantaneous subcutaneous bolus.
     """
 
     units: float
@@ -202,6 +209,7 @@ class SimulationState:
     insulin_subcutaneous: float = 0.0
     insulin_subq_rate: float = 0.0
     insulin_subq_minutes_remaining: float = 0.0
+    basal_insulin_rate: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -220,3 +228,4 @@ class SimulationSnapshot:
     insulin_subcutaneous: float = 0.0
     insulin_subq_rate: float = 0.0
     insulin_subq_minutes_remaining: float = 0.0
+    basal_insulin_rate: float = 0.0

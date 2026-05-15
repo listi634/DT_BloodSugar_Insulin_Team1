@@ -56,6 +56,7 @@ class ValidationReplayLogger:
         measured_glucose_mmol_l: float | None = None,
         due_carb_grams: float = 0.0,
         due_bolus_units: float = 0.0,
+        due_basal_rate_u_per_h: float = 0.0,
     ) -> None:
         """Append one simulated step with relevant benchmark context."""
         if self._closed:
@@ -68,6 +69,7 @@ class ValidationReplayLogger:
             "measured_glucose_mmol_l": measured_glucose_mmol_l,
             "due_carb_grams": due_carb_grams,
             "due_bolus_units": due_bolus_units,
+            "due_basal_rate_u_per_h": due_basal_rate_u_per_h,
             "simulation_state": asdict(snapshot),
             "state_notes": {
                 "plasma_glucose": "simulation_state.glucose",
@@ -115,7 +117,11 @@ class ValidationReplayLogger:
                 "measured_glucose_field": (
                     "measured_glucose_mmol_l from benchmark CGM"
                 ),
-                "event_fields": ["due_carb_grams", "due_bolus_units"],
+                "event_fields": [
+                    "due_carb_grams",
+                    "due_bolus_units",
+                    "due_basal_rate_u_per_h",
+                ],
             },
             "model_config": asdict(self.model_config),
             "controller_config": (

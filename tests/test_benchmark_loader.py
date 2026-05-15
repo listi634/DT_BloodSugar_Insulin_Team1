@@ -80,11 +80,11 @@ def test_build_validation_window_converts_and_extracts_carbs(
         csv_path,
         "\n".join(
             [
-                "user_id,timestamp,glucose,carbs",
-                "U001,2024-01-01 00:00:00,126,0",
-                "U001,2024-01-01 00:05:00,144,0",
-                "U001,2024-01-01 00:10:00,162,25",
-                "U001,2024-01-01 00:20:00,180,0",
+                "user_id,timestamp,glucose,carbs,insulin_basal,insulin_bolus",
+                "U001,2024-01-01 00:00:00,126,0,0.8,0",
+                "U001,2024-01-01 00:05:00,144,0,0.8,0",
+                "U001,2024-01-01 00:10:00,162,25,1.0,1.5",
+                "U001,2024-01-01 00:20:00,180,0,1.0,0",
             ]
         ),
     )
@@ -108,7 +108,12 @@ def test_build_validation_window_converts_and_extracts_carbs(
     assert window.measurement_reference == window.glucose_reference
     assert window.carb_reference == [(5.0, 25.0)]
     assert window.carb_replay_events == [(5.0, 25.0)]
-    assert window.insulin_reference == []
+    assert window.basal_reference == [
+        (0.0, 0.8),
+        (5.0, 1.0),
+        (15.0, 1.0),
+    ]
+    assert window.insulin_reference == [(5.0, 1.5)]
 
 
 def test_build_validation_window_rejects_invalid_inputs(
@@ -155,10 +160,10 @@ def test_build_validation_window_extracts_insulin_bolus(
         csv_path,
         "\n".join(
             [
-                "user_id,timestamp,glucose,carbs,insulin_bolus",
-                "U001,2024-01-01 00:00:00,126,0,0",
-                "U001,2024-01-01 00:10:00,130,0,1.5",
-                "U001,2024-01-01 00:20:00,140,0,0",
+                "user_id,timestamp,glucose,carbs,insulin_basal,insulin_bolus",
+                "U001,2024-01-01 00:00:00,126,0,0.8,0",
+                "U001,2024-01-01 00:10:00,130,0,0.8,1.5",
+                "U001,2024-01-01 00:20:00,140,0,1.0,0",
             ]
         ),
     )
@@ -171,3 +176,8 @@ def test_build_validation_window_extracts_insulin_bolus(
     )
 
     assert window.insulin_reference == [(10.0, 1.5)]
+    assert window.basal_reference == [
+        (0.0, 0.8),
+        (10.0, 0.8),
+        (20.0, 1.0),
+    ]

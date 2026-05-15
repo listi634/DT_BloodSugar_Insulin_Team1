@@ -1,7 +1,7 @@
 """CustomTkinter application shell for the glucose-insulin simulator."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
@@ -34,9 +34,11 @@ class ValidationRunState:
     measurement_reference: list[tuple[float, float]] | None = None
     carb_reference: list[tuple[float, float]] | None = None
     carb_replay_events: list[tuple[float, float]] | None = None
+    basal_reference: list[tuple[float, float]] | None = None
     insulin_reference: list[tuple[float, float]] | None = None
     measurement_replay_index: int = 0
     replay_index: int = 0
+    basal_replay_index: int = 0
     insulin_replay_index: int = 0
 
     @classmethod
@@ -53,9 +55,11 @@ class ValidationRunState:
             measurement_reference=list(window.measurement_reference),
             carb_reference=list(window.carb_reference),
             carb_replay_events=list(window.carb_replay_events),
+            basal_reference=list(window.basal_reference),
             insulin_reference=list(window.insulin_reference),
             measurement_replay_index=0,
             replay_index=0,
+            basal_replay_index=0,
             insulin_replay_index=0,
         )
 
@@ -298,8 +302,13 @@ class DigitalTwinApp(ctk.CTk):
         if not self._running:
             return
 
+        due_basal_rate = 0.0
         due_insulin: list[float] = []
         if self._validation.loaded:
+            due_basal = self._collect_validation_basal()
+            if due_basal:
+                due_basal_rate = due_basal[-1]
+                self._simulator.set_basal_rate(due_basal_rate)
             due_insulin = self._collect_validation_insulin()
             due_carbs = self._collect_validation_carbs()
             if due_carbs:
@@ -318,6 +327,7 @@ class DigitalTwinApp(ctk.CTk):
                 measured_glucose_mmol_l=measured_interstitium,
                 due_carb_grams=sum(due_carbs),
                 due_bolus_units=sum(due_insulin),
+                due_basal_rate_u_per_h=due_basal_rate,
             )
         else:
             # Idle/manual runs keep controller active
@@ -386,6 +396,7 @@ class DigitalTwinApp(ctk.CTk):
             f"G={state.glucose:.2f} mmol/L    "
             f"I={state.insulin:.2f} uU/mL    "
             f"rate={state.insulin_rate:.2f}    "
+            f"basal={state.basal_insulin_rate:.2f}    "
             f"mode={mode}"
         )
         self.metrics_label.configure(text=metrics_text)
@@ -493,6 +504,57 @@ class DigitalTwinApp(ctk.CTk):
             self._integrator_method,
             window.initial_glucose_mmol_l,
         )
+        # Detect user profile from replayed basal and bolus signals
+        basal_series = window.basal_reference or []
+        insulin_series = window.insulin_reference or []
+        has_pump_basal = any(point[1] > 0.0 for point in basal_series)
+        has_bolus = any(point[1] > 0.0 for point in insulin_series)
+
+        if has_pump_basal:
+            profile_text = "Type 1 (Pump)"
+            insulin_basal_val = 0.0
+            insulin_response_gain_val = 0.0
+            profile_color = "#FFCCCC"
+        elif not has_pump_basal and not has_bolus:
+            profile_text = "Healthy"
+            insulin_basal_val = 10.0
+            insulin_response_gain_val = 0.32
+            profile_color = "#CCFFCC"
+        else:
+            profile_text = "Type 1 (MDI/Syringe)"
+            insulin_basal_val = 10.0
+            insulin_response_gain_val = 0.0
+            profile_color = "#FFE6CC"
+
+        # Apply profile adjustments to the simulator's model config
+        old_config = self._simulator.model_config
+        new_config = replace(
+            old_config,
+            insulin_basal=insulin_basal_val,
+            insulin_response_gain=insulin_response_gain_val,
+        )
+        # Update simulator internals and recreate estimator with new config
+        self._simulator._model_config = new_config
+        # Update initial and current insulin state to match new basal
+        self._simulator._initial_state = replace(
+            self._simulator._initial_state, insulin=insulin_basal_val
+        )
+        self._simulator._state = replace(
+            self._simulator._state, insulin=insulin_basal_val
+        )
+        # Recreate estimator to use updated model config
+        self._simulator._estimator = ExtendedKalmanFilterEstimator(
+            model=self._simulator._model,
+            model_config=new_config,
+            initial_state=self._simulator.current_state,
+        )
+
+        # Update GUI with detected profile
+        try:
+            self.control_panel.set_user_profile(profile_text, profile_color)
+        except Exception:
+            self.control_panel.set_user_profile(profile_text)
+
         self._close_validation_logger()
         self._validation_logger = ValidationReplayLogger(
             output_dir=(
@@ -549,6 +611,20 @@ class DigitalTwinApp(ctk.CTk):
         self._validation.insulin_replay_index = next_index
         return due_units
 
+    def _collect_validation_basal(self) -> list[float]:
+        """Collect basal-rate events due for the current validation time."""
+        if self._validation.basal_reference is None:
+            return []
+
+        current_time = self._simulator.current_state.time_minutes
+        due_rates, next_index = collect_due_insulin_events(
+            self._validation.basal_reference,
+            self._validation.basal_replay_index,
+            current_time,
+        )
+        self._validation.basal_replay_index = next_index
+        return due_rates
+
     def _append_validation_log(
         self,
         snapshot: SimulatorSnapshot,
@@ -556,6 +632,7 @@ class DigitalTwinApp(ctk.CTk):
         measured_glucose_mmol_l: float | None,
         due_carb_grams: float,
         due_bolus_units: float,
+        due_basal_rate_u_per_h: float,
     ) -> None:
         """Append one validation step to the active replay log."""
         if self._validation_logger is None:
@@ -567,6 +644,7 @@ class DigitalTwinApp(ctk.CTk):
             measured_glucose_mmol_l=measured_glucose_mmol_l,
             due_carb_grams=due_carb_grams,
             due_bolus_units=due_bolus_units,
+            due_basal_rate_u_per_h=due_basal_rate_u_per_h,
         )
 
     def _close_validation_logger(self) -> None:

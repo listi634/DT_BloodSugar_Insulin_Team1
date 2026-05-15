@@ -54,6 +54,8 @@ class PhysiologyModel:
         interstitium = float(values[4])
         insulin_subcutaneous = float(values[5])
 
+        total_insulin_rate = insulin_rate
+
         insulin_effect = max(0.0, insulin - config.insulin_basal)
         glucose_effect = max(0.0, glucose - config.glucose_basal)
         effective_sensitivity = (
@@ -71,7 +73,7 @@ class PhysiologyModel:
         d_insulin = (
             -config.insulin_decay * (insulin - config.insulin_basal)
             + config.insulin_response_gain * glucose_effect
-            + insulin_rate
+            + total_insulin_rate
         )
 
         # Absorption from subcutaneous depot into plasma insulin
@@ -132,6 +134,8 @@ class PhysiologyModel:
             raise ValueError("state.interstitium must be non-negative")
         if state.insulin_rate < 0.0:
             raise ValueError("state.insulin_rate must be non-negative")
+        if state.basal_insulin_rate < 0.0:
+            raise ValueError("state.basal_insulin_rate must be non-negative")
         if state.sport_multiplier < 1.0:
             raise ValueError("state.sport_multiplier must be at least 1.0")
         if state.sport_minutes_remaining < 0.0:
@@ -156,13 +160,14 @@ class PhysiologyModel:
             ],
             dtype=float,
         )
+        total_insulin_rate = state.insulin_rate + state.basal_insulin_rate
         next_values, _ = self._integrator.integrate_step(
             derivative=lambda time_minutes, values: self._derivative(
                 time_minutes,
                 values,
                 config,
                 sensitivity_multiplier,
-                state.insulin_rate,
+                total_insulin_rate,
             ),
             y0=initial_values,
             t0=state.time_minutes,
@@ -208,6 +213,7 @@ class PhysiologyModel:
             insulin_rate=state.insulin_rate,
             insulin_subq_rate=state.insulin_subq_rate,
             insulin_subq_minutes_remaining=state.insulin_subq_minutes_remaining,
+            basal_insulin_rate=state.basal_insulin_rate,
             sport_multiplier=next_sport_multiplier,
             sport_minutes_remaining=next_sport_remaining,
         )

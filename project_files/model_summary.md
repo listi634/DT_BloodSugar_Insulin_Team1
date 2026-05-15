@@ -6,6 +6,7 @@ blood glucose and insulin dynamics. It models five coupled continuous
 states:
 - Plasma glucose concentration in blood
 - Effective insulin level
+- Subcutaneous insulin depot
 - Stomach carbohydrate reservoir
 - Intestinal carbohydrate reservoir
 - Interstitial glucose (the sensor signal for the controller)
@@ -36,6 +37,7 @@ $$
 ### Inputs `u`
 Control and known external inputs that influence dynamics:
 - `insulin_rate` (controller output, infused insulin rate)
+- `basal_insulin_rate` (persistent pump basal input)
 - `meal_carbs` (queued by user and injected into `carb_pool`)
 - `sport_multiplier`, `sport_minutes_remaining` (temporary sensitivity
   modulation from user sport events)
@@ -59,6 +61,8 @@ Slowly changing/constant model parameters (`ModelConfig`):
   `carb_to_glucose_gain`
 - Interstitium dynamics: `interstitium_tau_minutes` (time constant for
   sensor dynamics)
+- Insulin depot dynamics: `plasma_volume_ml`,
+  `insulin_subq_absorption_tau_minutes`
 - Safety clamps: `min_glucose`, `max_glucose`, `min_insulin`,
   `max_insulin`
 
@@ -86,6 +90,8 @@ Simulation metadata that also affects future behavior:
 - `sport_multiplier`
 - `sport_minutes_remaining`
 - `insulin_rate` (held over each step until recomputed)
+- `basal_insulin_rate` (persistent converted basal input)
+- `insulin_subcutaneous` (subcutaneous insulin depot)
 
 ### Disturbances `w`
 Uncontrolled or partially controlled effects:
@@ -136,9 +142,11 @@ $$
 \begin{aligned}
 G &:= \text{plasma glucose}, \\
 I &:= \text{insulin}, \\
+I_{\mathrm{subq}} &:= \text{subcutaneous insulin depot}, \\
 C &:= \text{carbohydrate pool}, \\
 G_{\mathrm{int}} &:= \text{interstitial glucose (CGM signal)}, \\
 u_I &:= \text{commanded insulin rate}, \\
+u_{\mathrm{basal}} &:= \text{basal insulin rate}, \\
 s &:= \text{effective sport sensitivity multiplier},\; s \ge 1
 \end{aligned}
 $$
@@ -151,6 +159,18 @@ $$
 
 $$
 \frac{dI}{dt} = -k_i\,(I-I_b) + k_r\,\max(0, G-G_b) + u_I
+\; + \; u_{\mathrm{basal}}
+$$
+
+$$
+\frac{dI_{\mathrm{subq}}}{dt} = -\frac{1}{\tau_{\mathrm{subq}}} I_{\mathrm{subq}}
+$$
+
+The depot absorption term is added to plasma insulin inside the model:
+
+$$
+\frac{dI}{dt} \leftarrow \frac{dI}{dt} +
+\frac{1}{\tau_{\mathrm{subq}}} I_{\mathrm{subq}}
 $$
 
 $$
@@ -166,23 +186,25 @@ $$
 \frac{dG_{\mathrm{int}}}{dt} = \frac{G - G_{\mathrm{int}}}{\tau}
 $$
 
-with parameter mapping:
+The simulator boundary converts pump units to model units using the
+plasma volume. The conversion factor is
+`unit_to_uU_per_mL = 1,000,000 / plasma_volume_ml`.
 
-$$
-\begin{aligned}
-k_g &= \texttt{glucose\_decay}, &
-k_i &= \texttt{insulin\_decay}, \\
-S_I &= \texttt{insulin\_sensitivity}, &
-k_r &= \texttt{insulin\_response\_gain}, \\
-k_a &= \texttt{meal\_absorption\_rate}, &
-k_c &= \texttt{carb\_to\_glucose\_gain}, \\
-G_b &= \texttt{glucose\_basal}, &
-I_b &= \texttt{insulin\_basal}, \\
-	au_s &= \texttt{stomach\_tau\_minutes}, &
-	au_i &= \texttt{intestine\_tau\_minutes}, &
-	au &= \texttt{interstitium\_tau\_minutes} &
-\end{aligned}
-$$
+Bolus inputs increase the subcutaneous depot, while basal inputs become
+a persistent per-minute rate before entering the model.
+
+Parameter mapping:
+- `k_g = glucose_decay`
+- `k_i = insulin_decay`
+- `S_I = insulin_sensitivity`
+- `k_r = insulin_response_gain`
+- `k_a = meal_absorption_rate`
+- `k_c = carb_to_glucose_gain`
+- `G_b = glucose_basal`
+- `I_b = insulin_basal`
+- `tau_s = stomach_tau_minutes`
+- `tau_i = intestine_tau_minutes`
+- `tau = interstitium_tau_minutes`
 
 Post-step safety projection:
 
@@ -218,5 +240,31 @@ $$
   tuned on Phase 1 validation windows. The current defaults are
   `stomach_tau_minutes=18.0`, `intestine_tau_minutes=40.0`, and
   `interstitium_tau_minutes=8.0`.
-- Scenario inputs and bolus actions should be interpreted as model-side
-  replay signals unless separately calibrated to a real dosing unit.
+- Scenario inputs are converted at the simulator boundary into the
+  model's internal concentration units using `plasma_volume_ml`.
+- Bolus actions now populate the subcutaneous insulin depot first;
+  basal inputs are maintained as a persistent rate.
+
+## 9. Automatic User Profile Detection and Parameter Mapping
+
+When a GlucoBench validation window is preloaded the GUI automatically
+classifies the user condition from the recorded basal and bolus signals
+and adjusts a small set of `ModelConfig` parameters to provide sensible
+defaults for the simulation and estimator. The detection rules are:
+
+- "Type 1 (Pump)": any recorded `basal_rate > 0` in the window
+- "Type 1 (MDI/Syringe)": no recorded basal samples (all zeros) but
+  one or more bolus events present
+- "Healthy": no recorded basal samples and no bolus events
+
+The parameter mappings applied on detection are:
+
+- Type 1 (Pump): `insulin_basal=0.0`, `insulin_response_gain=0.0`
+- Healthy: `insulin_basal=10.0` (fasting baseline),
+  `insulin_response_gain=0.32`
+- Type 1 (MDI/Syringe): `insulin_basal=10.0` (virtual basal),
+  `insulin_response_gain=0.0`
+
+These adjustments are intended as pragmatic defaults for V1 and are
+applied only at window preload time; they can be revisited and
+personalized in later versions.

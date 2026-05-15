@@ -166,6 +166,18 @@ class ControlPanel(ctk.CTkFrame):
             row=8, column=0, sticky="ew", padx=8, pady=(0, 8)
         )
 
+        # Detected user profile display (empty until preload)
+        self.user_profile_label = ctk.CTkLabel(
+            self.validation_frame,
+            text="User profile: unknown",
+            anchor="w",
+            justify="left",
+            wraplength=260,
+        )
+        self.user_profile_label.grid(
+            row=9, column=0, sticky="ew", padx=8, pady=(0, 8)
+        )
+
     def set_validation_users(self, user_ids: list[str]) -> None:
         """Populate user selector and trigger dependent refresh."""
         if not user_ids:
@@ -214,6 +226,16 @@ class ControlPanel(ctk.CTkFrame):
     def set_validation_status(self, message: str) -> None:
         """Display a short validation status string in the card."""
         self.validation_status_label.configure(text=message)
+
+    def set_user_profile(self, profile_text: str, color: str | None = None) -> None:
+        """Show detected user profile with optional color hint."""
+        self.user_profile_label.configure(text=f"User profile: {profile_text}")
+        if color is not None:
+            try:
+                self.user_profile_label.configure(fg_color=color)
+            except Exception:
+                # Some themes may not support fg_color on labels; ignore.
+                pass
 
     def set_validation_controls_enabled(self, enabled: bool) -> None:
         """Enable or disable all validation widgets as a group."""

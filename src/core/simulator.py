@@ -40,6 +40,10 @@ class GlucoseSimulator:
             raise ValueError("initial_state.glucose must be non-negative")
         if initial_state.insulin < 0.0:
             raise ValueError("initial_state.insulin must be non-negative")
+        if initial_state.basal_insulin_rate < 0.0:
+            raise ValueError(
+                "initial_state.basal_insulin_rate must be non-negative"
+            )
 
         self._model = model
         if integrator_config is not None:
@@ -134,6 +138,25 @@ class GlucoseSimulator:
         bolus = BolusEvent(units=units, over_minutes=over_minutes)
         bolus.validate()
         self._pending.bolus_event = bolus
+
+    def set_basal_rate(self, units_per_hour: float) -> None:
+        """Store the active basal rate after converting from U/h.
+
+        Args:
+            units_per_hour: Basal delivery rate in pump units per hour.
+
+        Raises:
+            ValueError: If units_per_hour is negative.
+        """
+        if units_per_hour < 0.0:
+            raise ValueError("units_per_hour must be non-negative")
+
+        concentration_rate = (
+            units_per_hour
+            * self._model_config.unit_to_uu_per_ml
+            / 60.0
+        )
+        self._state.basal_insulin_rate = concentration_rate
 
     def queue_sport(self, multiplier: float, duration_minutes: float) -> None:
         """Queue a temporary insulin-sensitivity boost event."""
@@ -253,16 +276,23 @@ class GlucoseSimulator:
 
         if self._pending.bolus_event is not None:
             bolus = self._pending.bolus_event
+            unit_to_concentration = self._model_config.unit_to_uu_per_ml
             if bolus.over_minutes is None:
                 frac = getattr(
                     self._model_config, "insulin_subq_fraction", 1.0
                 )
-                self._state.insulin_subcutaneous += bolus.units * frac
+                self._state.insulin_subcutaneous += (
+                    bolus.units * unit_to_concentration * frac
+                )
             else:
                 # Short infusion: convert units over minutes to per-minute
                 # input and keep a finite remaining duration so the rate
                 # expires when the requested window ends.
-                rate = bolus.units / bolus.over_minutes
+                rate = (
+                    bolus.units
+                    * unit_to_concentration
+                    / bolus.over_minutes
+                )
                 self._state.insulin_subq_rate += rate
                 self._state.insulin_subq_minutes_remaining = max(
                     self._state.insulin_subq_minutes_remaining,
@@ -301,6 +331,7 @@ class GlucoseSimulator:
             carb_intestine=state.carb_intestine,
             interstitium=state.interstitium,
             insulin_rate=state.insulin_rate,
+            basal_insulin_rate=getattr(state, "basal_insulin_rate", 0.0),
             sport_multiplier=state.sport_multiplier,
             sport_minutes_remaining=state.sport_minutes_remaining,
         )

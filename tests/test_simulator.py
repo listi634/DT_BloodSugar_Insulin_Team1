@@ -205,8 +205,23 @@ def test_bolus_is_subcutaneous_not_instant_plasma() -> None:
     snap_b = simulator_bolus.step(measured_interstitium=5.0, use_controller=False)
 
     # The immediate plasma insulin increase should be much smaller than the
-    # bolus units (because bolus is absorbed subcutaneously over time).
+    # direct plasma-equivalent injection that the bolus would imply.
     increase = snap_b.insulin - baseline
-    assert increase < 0.5 * 3.4
+    expected_direct = (
+        3.4 * simulator_bolus.model_config.unit_to_uu_per_ml
+    )
+    assert increase < 0.1 * expected_direct
     # The subcutaneous depot should contain the bolus (or infusion transferred)
     assert getattr(simulator_bolus.current_state, "insulin_subcutaneous", 0.0) > 0.0
+
+
+def test_basal_rate_is_converted_into_model_input() -> None:
+    """Basal delivery should act as a persistent rate, not an impulse."""
+    simulator = _build_simulator()
+    baseline = simulator.current_state.insulin
+
+    simulator.set_basal_rate(1.2)
+    snapshot = simulator.step(measured_interstitium=5.0, use_controller=False)
+
+    assert snapshot.basal_insulin_rate > 0.0
+    assert snapshot.insulin > baseline

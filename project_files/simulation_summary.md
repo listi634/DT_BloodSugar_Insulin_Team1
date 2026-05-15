@@ -16,6 +16,7 @@ Primary goals:
 ## 2. Expected Results and Use of Results
 Expected outputs:
 - Time traces of glucose, insulin, and insulin infusion rate
+- Basal-rate traces and subcutaneous insulin depot values
 - Observable response to meals or bolus inputs when replayed or
   simulated conservatively
 - Automated controller compensation after disturbances
@@ -55,8 +56,8 @@ Current interactions:
   plots for each selected window.
   The GUI now also writes a JSONL replay log per window under
   `project_files/phase1_results/validation_logs/` containing simulated
-  plasma glucose, interstitium, insulin, and the matched measured CGM and
-  event values for later analysis.
+  plasma glucose, interstitium, insulin, basal rate, subcutaneous depot,
+  and the matched measured CGM and event values for later analysis.
 - Machines/Libraries: SciPy ODE solver (`solve_ivp`), plotting/UI stack,
   EKF-based estimator scaffold
 - Databases/Sensors/Protocols: not connected in V1
@@ -79,6 +80,8 @@ Current interactions:
 ### External interfaces
 - GUI to simulation commands:
   - Queue meal: `queue_meal(carbs)` (from replayed benchmark events)
+  - Set basal rate: `set_basal_rate(units_per_hour)` (from replayed
+    benchmark events)
   - Runtime controls: step/reset (and loop start/stop in GUI layer)
   - Meal decision prompt:
     - Continue simulation immediately or launch a prediction overlay
@@ -130,6 +133,7 @@ sequenceDiagram
   - Seeds initial simulated glucose from first selected actual value
   - Replays carbohydrate events as queued meal events
   - Replays recorded insulin bolus events as queued bolus events
+  - Replays recorded basal-rate samples as persistent pump input
   - Feeds the window glucose series into the estimator as a measurement
     reference
   - Auto-stops at selected end timestamp span
@@ -140,6 +144,16 @@ sequenceDiagram
     simulated and measured values can be reloaded later without rerunning
     the GUI session
 
+### Automatic user profile detection
+
+When a validation window is preloaded the GUI will detect a simple
+user profile from the recorded basal and bolus signals and display the
+result in the validation card. The detection rules and parameter
+mapping are documented in `project_files/model_summary.md`. The GUI
+uses a colored hint and textual label to indicate the detected
+condition so users can immediately see whether the window corresponds
+to a pump user, an MDI/syringe user, or a healthy subject.
+
 ### Not implemented in V1
 - Save/load simulation snapshots
 - Replay/rewind timeline controls
@@ -147,6 +161,9 @@ sequenceDiagram
 The validation replay path treats benchmark glucose values as
 measurement inputs for the estimator and overlays the same reference in
 the plot. It does not overwrite the simulated glucose state directly.
+Recorded insulin boluses are converted into the subcutaneous depot,
+while basal samples are converted from U/h to the simulator's internal
+per-minute concentration rate before the next step is integrated.
 
 The prediction path is intentionally conservative: it is meant to show a
 short horizon trend after an event, not to claim that the simulator can
@@ -240,7 +257,10 @@ Implementation notes:
   to run replay/inference.
 - A discrete `queue_bolus()` event is available to model an
   administrated insulin bolus for prediction runs; boluses are applied
-  before EKF prediction so the estimator and model see the input.
+  to the subcutaneous depot before EKF prediction so the estimator and
+  model see the input.
+- `set_basal_rate()` stores the active converted basal input so it can
+  persist across steps until the next replay sample arrives.
 - All prediction/replay runs should include snapshot metadata (mode,
   bolus assumptions, estimator tuning) for reproducibility.
 

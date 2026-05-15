@@ -22,6 +22,7 @@ class BenchmarkRow:
     timestamp: datetime
     glucose_mmol_l: float
     carbs_grams: float
+    insulin_basal_units: float
     insulin_bolus_units: float
 
 
@@ -38,6 +39,7 @@ class ValidationWindowData:
     measurement_reference: list[tuple[float, float]]
     carb_reference: list[tuple[float, float]]
     carb_replay_events: list[tuple[float, float]]
+    basal_reference: list[tuple[float, float]]
     insulin_reference: list[tuple[float, float]]
 
 
@@ -188,6 +190,7 @@ class GlucoBenchLoader:
         measurement_reference: list[tuple[float, float]] = []
         carb_reference: list[tuple[float, float]] = []
         carb_replay_events: list[tuple[float, float]] = []
+        basal_reference: list[tuple[float, float]] = []
         insulin_reference: list[tuple[float, float]] = []
         for row in window_rows:
             elapsed_minutes = (row.timestamp - start_dt).total_seconds() / 60.0
@@ -198,6 +201,7 @@ class GlucoBenchLoader:
                 carb_point = (elapsed_minutes, row.carbs_grams)
                 carb_reference.append(carb_point)
                 carb_replay_events.append(carb_point)
+            basal_reference.append((elapsed_minutes, row.insulin_basal_units))
             insulin_bolus_units = row.insulin_bolus_units
             if insulin_bolus_units > 0.0:
                 insulin_reference.append(
@@ -214,6 +218,7 @@ class GlucoBenchLoader:
             measurement_reference=measurement_reference,
             carb_reference=carb_reference,
             carb_replay_events=carb_replay_events,
+            basal_reference=basal_reference,
             insulin_reference=insulin_reference,
         )
 
@@ -280,6 +285,11 @@ class GlucoBenchLoader:
                         timestamp=timestamp,
                         glucose_mmol_l=glucose_mg_dl / MGDL_PER_MMOLL,
                         carbs_grams=carbs_grams,
+                        insulin_basal_units=cls._parse_float(
+                            row.get("insulin_basal"),
+                            field_name="insulin_basal",
+                            line_number=line_number,
+                        ),
                         insulin_bolus_units=cls._parse_float(
                             row.get("insulin_bolus"),
                             field_name="insulin_bolus",

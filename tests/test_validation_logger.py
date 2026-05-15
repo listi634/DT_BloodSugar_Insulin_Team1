@@ -21,6 +21,7 @@ def _build_window() -> ValidationWindowData:
         measurement_reference=[(0.0, 5.5)],
         carb_reference=[(0.0, 30.0)],
         carb_replay_events=[(0.0, 30.0)],
+        basal_reference=[(0.0, 0.8)],
         insulin_reference=[(0.0, 2.0)],
     )
 
@@ -36,6 +37,7 @@ def _build_state() -> SimulationState:
         insulin_rate=0.0,
         sport_multiplier=1.0,
         sport_minutes_remaining=0.0,
+        basal_insulin_rate=0.8,
     )
 
 
@@ -50,6 +52,7 @@ def _build_snapshot() -> SimulationSnapshot:
         insulin_rate=0.1,
         sport_multiplier=1.0,
         sport_minutes_remaining=0.0,
+        basal_insulin_rate=0.8,
     )
 
 
@@ -69,6 +72,7 @@ def test_validation_replay_logger_writes_jsonl(tmp_path) -> None:
         measured_glucose_mmol_l=5.5,
         due_carb_grams=30.0,
         due_bolus_units=2.0,
+        due_basal_rate_u_per_h=0.8,
     )
     logger.close()
 
