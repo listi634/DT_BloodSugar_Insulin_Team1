@@ -37,4 +37,4 @@ def align_to_benchmark(input_csv, reference_csv, output_csv):
     return df_aligned
 
 # Ausführung
-align_to_benchmark('./data/HUPA0002P.csv', './data/GlucoBench_benchmark_dataset.csv', './data/HUPA0002P_aligned.csv')
+align_to_benchmark('./data/HUPA0015P.csv', './data/GlucoBench_benchmark_dataset.csv', './data/HUPA0015P_aligned.csv')

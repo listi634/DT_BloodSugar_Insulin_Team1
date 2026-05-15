@@ -1,12 +1,26 @@
 """Embedded Matplotlib charts for the CustomTkinter dashboard."""
 
+from datetime import datetime
+from datetime import timedelta
 from collections.abc import Sequence
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
+from matplotlib.ticker import AutoLocator
+from matplotlib.ticker import FuncFormatter
+from matplotlib.ticker import MultipleLocator
 import customtkinter as ctk
 
 from src.core.utilities import sanitize_reference_points
+
+TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
+DAY_TICK_INTERVAL_MINUTES = 24.0 * 60.0
+
+
+def format_day_label(origin: datetime, time_minutes: float) -> str:
+    """Format a minute offset as a human-readable day label."""
+    current_time = origin + timedelta(minutes=time_minutes)
+    return current_time.strftime("%Y-%m-%d")
 
 
 class PlotFrame(ctk.CTkFrame):
@@ -20,6 +34,7 @@ class PlotFrame(ctk.CTkFrame):
         self.ax_glucose = self.figure.add_subplot(211)
         self.ax_insulin = self.figure.add_subplot(212, sharex=self.ax_glucose)
         self.ax_carb = self.ax_glucose.twinx()
+        self._time_origin: datetime | None = None
 
         self.ax_glucose.set_title("Glucose and Insulin Dynamics")
         self.ax_glucose.set_ylabel("Glucose [mmol/L]")
@@ -76,6 +91,25 @@ class PlotFrame(ctk.CTkFrame):
             linewidth=2.0,
             label="Simulated Insulin",
         )[0]
+        self.line_insulin_basal = self.ax_insulin.plot(
+            [],
+            [],
+            color="#6C757D",
+            linewidth=1.8,
+            linestyle="-",
+            alpha=0.85,
+            drawstyle="steps-post",
+            label="Basal Insulin (Ref)",
+        )[0]
+        self.line_insulin_bolus = self.ax_insulin.plot(
+            [],
+            [],
+            color="#E63946",
+            linestyle="None",
+            marker="v",
+            markersize=7,
+            label="Bolus Insulin (Ref)",
+        )[0]
         self.line_insulin_smoothed = self.ax_insulin.plot(
             [],
             [],
@@ -111,6 +145,44 @@ class PlotFrame(ctk.CTkFrame):
         self.canvas_widget = tk_widget
         self.canvas_widget.pack(fill="both", expand=True, padx=8, pady=8)
 
+    def set_time_origin(self, timestamp_text: str | None) -> None:
+        """Switch the x-axis between minute offsets and day timestamps."""
+        if not timestamp_text:
+            self._time_origin = None
+            self.ax_glucose.xaxis.set_major_locator(AutoLocator())
+            self.ax_glucose.xaxis.set_major_formatter(
+                FuncFormatter(lambda x, _: f"{x:.0f}")
+            )
+            self.ax_insulin.xaxis.set_major_locator(AutoLocator())
+            self.ax_insulin.xaxis.set_major_formatter(
+                FuncFormatter(lambda x, _: f"{x:.0f}")
+            )
+            self.ax_insulin.set_xlabel("Time [min]")
+            self.canvas.draw_idle()  # type: ignore[no-untyped-call]
+            return
+
+        self._time_origin = datetime.strptime(timestamp_text, TIMESTAMP_FORMAT)
+        self.ax_glucose.xaxis.set_major_locator(
+            MultipleLocator(DAY_TICK_INTERVAL_MINUTES)
+        )
+        self.ax_glucose.xaxis.set_major_formatter(
+            FuncFormatter(self._format_timestamp_tick)
+        )
+        self.ax_insulin.xaxis.set_major_locator(
+            MultipleLocator(DAY_TICK_INTERVAL_MINUTES)
+        )
+        self.ax_insulin.xaxis.set_major_formatter(
+            FuncFormatter(self._format_timestamp_tick)
+        )
+        self.ax_insulin.set_xlabel("Timestamp [day]")
+        self.canvas.draw_idle()  # type: ignore[no-untyped-call]
+
+    def _format_timestamp_tick(self, x_value: float, _: int) -> str:
+        """Format a tick value as a human-readable day label."""
+        if self._time_origin is None:
+            return f"{x_value:.0f}"
+        return format_day_label(self._time_origin, x_value)
+
     def _refresh_glucose_legend(self) -> None:
         """Refresh combined legend for glucose and carb overlays."""
         glucose_handles, glucose_labels = (
@@ -131,6 +203,8 @@ class PlotFrame(ctk.CTkFrame):
         interstitium_values: list[float] | None = None,
         actual_glucose_reference: Sequence[tuple[float, float]] | None = None,
         carb_reference: Sequence[tuple[float, float]] | None = None,
+        basal_reference: Sequence[tuple[float, float]] | None = None,
+        insulin_reference: Sequence[tuple[float, float]] | None = None,
         prediction_time: list[float] | None = None,
         prediction_glucose: list[float] | None = None,
         prediction_insulin: list[float] | None = None,
@@ -148,6 +222,12 @@ class PlotFrame(ctk.CTkFrame):
         glucose_ref_values = [point[1] for point in glucose_overlay]
         carb_ref_time = [point[0] for point in carb_overlay]
         carb_ref_values = [point[1] for point in carb_overlay]
+        basal_overlay = sanitize_reference_points(basal_reference)
+        bolus_overlay = sanitize_reference_points(insulin_reference)
+        basal_time = [point[0] for point in basal_overlay]
+        basal_values = [point[1] for point in basal_overlay]
+        bolus_time = [point[0] for point in bolus_overlay]
+        bolus_values = [point[1] for point in bolus_overlay]
 
         self.line_glucose.set_data(time_minutes, glucose_values)
         self.line_insulin.set_data(time_minutes, insulin_values)
@@ -155,6 +235,8 @@ class PlotFrame(ctk.CTkFrame):
             self.line_interstitium.set_data(time_minutes, interstitium_values)
         self.line_glucose_actual.set_data(glucose_ref_time, glucose_ref_values)
         self.line_carb_reference.set_data(carb_ref_time, carb_ref_values)
+        self.line_insulin_basal.set_data(basal_time, basal_values)
+        self.line_insulin_bolus.set_data(bolus_time, bolus_values)
         # insulin already set above
         if smoothed_insulin_time is not None:
             smoothed_insulin_values = smoothed_insulin_values or []

@@ -239,6 +239,7 @@ class DigitalTwinApp(ctk.CTk):
         self._prediction_overlay = None
         self._smoothed_overlay = None
         self._awaiting_resume = False
+        self.plot_frame.set_time_origin(None)
         self.plot_frame.clear_prediction_overlay()
         self.plot_frame.clear_smoothed_overlay()
         self.control_panel.set_validation_status(
@@ -362,6 +363,16 @@ class DigitalTwinApp(ctk.CTk):
             interstitium,
             actual_glucose_reference=glucose_reference,
             carb_reference=carb_reference,
+            basal_reference=(
+                self._validation.basal_reference
+                if self._validation.loaded
+                else None
+            ),
+            insulin_reference=(
+                self._validation.insulin_reference
+                if self._validation.loaded
+                else None
+            ),
             prediction_time=(
                 self._prediction_overlay.time_minutes
                 if self._prediction_overlay
@@ -500,6 +511,7 @@ class DigitalTwinApp(ctk.CTk):
         self.plot_frame.clear_smoothed_overlay()
 
         self._validation = ValidationRunState.from_window(window)
+        self.plot_frame.set_time_origin(window.start_timestamp)
         self._simulator = self._simulator_builder(
             self._integrator_method,
             window.initial_glucose_mmol_l,
