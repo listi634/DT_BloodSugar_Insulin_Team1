@@ -7,6 +7,7 @@ from datetime import date
 from datetime import datetime
 from datetime import time
 from pathlib import Path
+from typing import Any
 
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 DAY_FORMAT = "%Y-%m-%d"
@@ -329,3 +330,300 @@ class GlucoBenchLoader:
             raise ValueError(
                 f"Invalid {field_name} value at line {line_number}: {text}"
             ) from exc
+
+    def compute_user_statistics(self, user_id: str) -> dict[str, Any]:
+        """Compute baseline statistics for a single user.
+
+        Computes median glucose, percentiles, mean meal size, and mean
+        insulin bolus from all available historical data for the user.
+
+        Args:
+            user_id: User identifier to analyze.
+
+        Returns:
+            Dictionary with keys:
+                - 'user_id': str
+                - 'baseline_glucose': float (median glucose in mmol/L)
+                - 'percentile_10': float
+                - 'percentile_25': float
+                - 'percentile_75': float
+                - 'percentile_90': float
+                - 'mean_meal_grams': float (mean carb intake when >0)
+                - 'mean_bolus_units': float (mean insulin bolus when >0)
+                - 'num_rows': int (total data points)
+
+        Raises:
+            ValueError: If user_id does not exist in dataset.
+        """
+        rows = self._get_rows_for_user(user_id)
+
+        glucose_values = [row.glucose_mmol_l for row in rows]
+        carb_values = [
+            row.carbs_grams for row in rows if row.carbs_grams > 0.0
+        ]
+        bolus_values = [
+            row.insulin_bolus_units
+            for row in rows
+            if row.insulin_bolus_units > 0.0
+        ]
+
+        # Compute percentiles (using sorted list, not numpy for simplicity)
+        glucose_sorted = sorted(glucose_values)
+        n = len(glucose_sorted)
+
+        def percentile_value(values: list[float], p: float) -> float:
+            """Compute percentile using linear interpolation."""
+            if not values:
+                return 0.0
+            idx = (p / 100.0) * (len(values) - 1)
+            lower_idx = int(idx)
+            upper_idx = min(lower_idx + 1, len(values) - 1)
+            if lower_idx == upper_idx:
+                return values[lower_idx]
+            fraction = idx - lower_idx
+            return (
+                values[lower_idx] * (1 - fraction)
+                + values[upper_idx] * fraction
+            )
+
+        median_glucose = percentile_value(glucose_sorted, 50.0)
+        mean_meal = sum(carb_values) / len(carb_values) if carb_values else 0.0
+        mean_bolus = (
+            sum(bolus_values) / len(bolus_values) if bolus_values else 0.0
+        )
+
+        return {
+            "user_id": user_id,
+            "baseline_glucose": median_glucose,
+            "percentile_10": percentile_value(glucose_sorted, 10.0),
+            "percentile_25": percentile_value(glucose_sorted, 25.0),
+            "percentile_75": percentile_value(glucose_sorted, 75.0),
+            "percentile_90": percentile_value(glucose_sorted, 90.0),
+            "mean_meal_grams": mean_meal,
+            "mean_bolus_units": mean_bolus,
+            "num_rows": n,
+        }
+
+    def get_all_user_stats(self) -> dict[str, dict[str, Any]]:
+        """Compute statistics for all users in the dataset.
+
+        Returns:
+            Dictionary mapping user_id to their statistics dict.
+        """
+        all_stats = {}
+        for user_id in self.get_user_ids():
+            all_stats[user_id] = self.compute_user_statistics(user_id)
+        return all_stats
+
+    def print_user_stats_table(self) -> None:
+        """Print a formatted table of user statistics to stdout."""
+        stats = self.get_all_user_stats()
+        if not stats:
+            print("No user statistics available")
+            return
+
+        print("\n" + "=" * 120)
+        print(
+            f"{'User ID':>8} | "
+            f"{'Baseline':>10} | "
+            f"{'P10':>8} | "
+            f"{'P25':>8} | "
+            f"{'P75':>8} | "
+            f"{'P90':>8} | "
+            f"{'Mean Meal':>10} | "
+            f"{'Mean Bolus':>10} | "
+            f"{'Rows':>6}"
+        )
+        print("-" * 120)
+
+        for user_id in sorted(stats.keys()):
+            stat = stats[user_id]
+            print(
+                f"{stat['user_id']:>8} | "
+                f"{stat['baseline_glucose']:>10.2f} | "
+                f"{stat['percentile_10']:>8.2f} | "
+                f"{stat['percentile_25']:>8.2f} | "
+                f"{stat['percentile_75']:>8.2f} | "
+                f"{stat['percentile_90']:>8.2f} | "
+                f"{stat['mean_meal_grams']:>10.2f} | "
+                f"{stat['mean_bolus_units']:>10.2f} | "
+                f"{stat['num_rows']:>6}"
+            )
+
+        print("=" * 120 + "\n")
+
+    def save_user_stats_to_csv(self, output_path: str | Path) -> None:
+        """Export user statistics to a CSV file.
+
+        Args:
+            output_path: File path where CSV will be written.
+        """
+        stats = self.get_all_user_stats()
+        if not stats:
+            raise ValueError("No statistics to save")
+
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with output_file.open(mode="w", encoding="utf-8", newline="") as f:
+            fieldnames = [
+                "user_id",
+                "baseline_glucose",
+                "percentile_10",
+                "percentile_25",
+                "percentile_75",
+                "percentile_90",
+                "mean_meal_grams",
+                "mean_bolus_units",
+                "num_rows",
+            ]
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for user_id in sorted(stats.keys()):
+                writer.writerow(stats[user_id])
+
+    def get_best_validation_windows(
+        self, num_users: int = 2, num_windows_per_user: int = 2
+    ) -> list[tuple[str, str, str]]:
+        """Find best validation windows (user, start_day, end_day).
+
+        Selects windows with:
+        - Continuous data (no large gaps)
+        - Multiple meals (≥3)
+        - Multiple bolus events (≥2)
+
+        Args:
+            num_users: Number of users to select.
+            num_windows_per_user: Number of windows per user to find.
+
+        Returns:
+            List of tuples (user_id, start_day, end_day) in YYYY-mm-dd format.
+        """
+        selected_windows: list[tuple[str, str, str]] = []
+        user_ids = self.get_user_ids()[:num_users]
+
+        for user_id in user_ids:
+            windows_for_user = 0
+            days = self.get_user_days(user_id)
+
+            for start_idx, start_day in enumerate(days):
+                if windows_for_user >= num_windows_per_user:
+                    break
+
+                # Try one- or two-day windows
+                for end_offset in [0, 1]:
+                    if windows_for_user >= num_windows_per_user:
+                        break
+
+                    end_idx = start_idx + end_offset
+                    if end_idx >= len(days):
+                        continue
+
+                    end_day = days[end_idx]
+
+                    try:
+                        window = self.build_validation_window_for_days(
+                            user_id, start_day, end_day
+                        )
+
+                        # Count meals and boluses
+                        num_meals = len(
+                            [x for x in window.carb_replay_events if x[1] > 0]
+                        )
+                        num_boluses = len(
+                            [x for x in window.insulin_reference if x[1] > 0]
+                        )
+
+                        # Accept if criteria met
+                        if num_meals >= 3 and num_boluses >= 2:
+                            selected_windows.append(
+                                (user_id, start_day, end_day)
+                            )
+                            windows_for_user += 1
+
+                    except ValueError:
+                        # Skip invalid windows silently
+                        continue
+
+        return selected_windows
+
+    def print_validation_windows(self) -> None:
+        """Print a list of selected validation windows."""
+        windows = self.get_best_validation_windows()
+        if not windows:
+            print("No suitable validation windows found")
+            return
+
+        print("\n" + "=" * 70)
+        print(f"{'User':>8} | {'Start Day':>12} | {'End Day':>12} | Notes")
+        print("-" * 70)
+
+        for user_id, start_day, end_day in windows:
+            try:
+                window = self.build_validation_window_for_days(
+                    user_id, start_day, end_day
+                )
+                num_meals = len(
+                    [x for x in window.carb_replay_events if x[1] > 0]
+                )
+                num_boluses = len(
+                    [x for x in window.insulin_reference if x[1] > 0]
+                )
+                duration_h = window.duration_minutes / 60.0
+
+                notes = (
+                    f"{num_meals} meals, {num_boluses} boluses, "
+                    f"{duration_h:.1f}h"
+                )
+                print(
+                    f"{user_id:>8} | {start_day:>12} | "
+                    f"{end_day:>12} | {notes}"
+                )
+            except ValueError:
+                pass
+
+        print("=" * 70 + "\n")
+
+    def save_validation_windows_to_file(self, output_path: str | Path) -> None:
+        """Save selected validation windows to a text file.
+
+        Args:
+            output_path: File path where window list will be written.
+        """
+        windows = self.get_best_validation_windows()
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with output_file.open(mode="w", encoding="utf-8") as f:
+            f.write("Phase 1 Validation Windows\n")
+            f.write("=" * 70 + "\n\n")
+
+            for user_id, start_day, end_day in windows:
+                try:
+                    window = self.build_validation_window_for_days(
+                        user_id, start_day, end_day
+                    )
+                    num_meals = len(
+                        [x for x in window.carb_replay_events if x[1] > 0]
+                    )
+                    num_boluses = len(
+                        [x for x in window.insulin_reference if x[1] > 0]
+                    )
+                    duration_h = window.duration_minutes / 60.0
+
+                    f.write(f"User: {user_id}\n")
+                    f.write(
+                        f"Date Range: {start_day} to {end_day} "
+                        f"({duration_h:.1f} hours)\n"
+                    )
+                    f.write(
+                        f"Dynamics: {num_meals} meals, {num_boluses} boluses\n"
+                    )
+                    f.write(
+                        f"Initial glucose: "
+                        f"{window.initial_glucose_mmol_l:.2f} mmol/L\n"
+                    )
+                    f.write("\n")
+
+                except ValueError:
+                    pass

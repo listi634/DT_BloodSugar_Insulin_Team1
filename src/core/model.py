@@ -42,11 +42,16 @@ class PhysiologyModel:
         sensitivity_multiplier: float,
         insulin_rate: float,
     ) -> np.ndarray:
-        """Compute continuous-time state derivatives for solve_ivp."""
+        """Compute continuous-time state derivatives for solve_ivp.
+
+        State vector: [glucose, insulin, carb_stomach, carb_intestine,
+                       interstitium]
+        """
         glucose = float(values[0])
         insulin = float(values[1])
-        carb_pool = float(values[2])
-        interstitium = float(values[3])
+        carb_stomach = float(values[2])
+        carb_intestine = float(values[3])
+        interstitium = float(values[4])
 
         insulin_effect = max(0.0, insulin - config.insulin_basal)
         glucose_effect = max(0.0, glucose - config.glucose_basal)
@@ -54,26 +59,41 @@ class PhysiologyModel:
             config.insulin_sensitivity * sensitivity_multiplier
         )
 
+        # Glucose dynamics: decay, insulin suppression, carb absorption
         d_glucose = (
             -config.glucose_decay * (glucose - config.glucose_basal)
             - effective_sensitivity * insulin_effect
-            + config.carb_to_glucose_gain * carb_pool
+            + config.carb_to_glucose_gain * carb_intestine
         )
 
+        # Insulin dynamics: decay, pancreatic response, exogenous infusion
         d_insulin = (
             -config.insulin_decay * (insulin - config.insulin_basal)
             + config.insulin_response_gain * glucose_effect
             + insulin_rate
         )
 
-        d_carb_pool = -config.meal_absorption_rate * carb_pool
+        # Two-compartment meal absorption: stomach -> intestine -> glucose
+        d_carb_stomach = -(1.0 / config.stomach_tau_minutes) * carb_stomach
+        d_carb_intestine = (
+            1.0 / config.stomach_tau_minutes
+        ) * carb_stomach - (
+            1.0 / config.intestine_tau_minutes
+        ) * carb_intestine
 
+        # Interstitium dynamics: diffusion from blood glucose
         d_interstitium = (
             glucose - interstitium
         ) / config.interstitium_tau_minutes
 
         return np.array(
-            [d_glucose, d_insulin, d_carb_pool, d_interstitium],
+            [
+                d_glucose,
+                d_insulin,
+                d_carb_stomach,
+                d_carb_intestine,
+                d_interstitium,
+            ],
             dtype=float,
         )
 
@@ -94,8 +114,10 @@ class PhysiologyModel:
             raise ValueError("state.glucose must be non-negative")
         if state.insulin < 0.0:
             raise ValueError("state.insulin must be non-negative")
-        if state.carb_pool < 0.0:
-            raise ValueError("state.carb_pool must be non-negative")
+        if state.carb_stomach < 0.0:
+            raise ValueError("state.carb_stomach must be non-negative")
+        if state.carb_intestine < 0.0:
+            raise ValueError("state.carb_intestine must be non-negative")
         if state.interstitium < 0.0:
             raise ValueError("state.interstitium must be non-negative")
         if state.insulin_rate < 0.0:
@@ -117,7 +139,8 @@ class PhysiologyModel:
             [
                 state.glucose,
                 state.insulin,
-                state.carb_pool,
+                state.carb_stomach,
+                state.carb_intestine,
                 state.interstitium,
             ],
             dtype=float,
@@ -146,9 +169,10 @@ class PhysiologyModel:
             config.min_insulin,
             config.max_insulin,
         )
-        next_carb_pool = max(0.0, float(next_values[2]))
+        next_carb_stomach = max(0.0, float(next_values[2]))
+        next_carb_intestine = max(0.0, float(next_values[3]))
         next_interstitium = _clamp(
-            float(next_values[3]),
+            float(next_values[4]),
             config.min_glucose,
             config.max_glucose,
         )
@@ -165,7 +189,8 @@ class PhysiologyModel:
             time_minutes=state.time_minutes + dt_minutes,
             glucose=next_glucose,
             insulin=next_insulin,
-            carb_pool=next_carb_pool,
+            carb_stomach=next_carb_stomach,
+            carb_intestine=next_carb_intestine,
             interstitium=next_interstitium,
             insulin_rate=state.insulin_rate,
             sport_multiplier=next_sport_multiplier,

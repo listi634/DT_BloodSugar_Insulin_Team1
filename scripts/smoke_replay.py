@@ -2,6 +2,7 @@
 
 Run: python scripts/smoke_replay.py
 """
+
 from src.core.controller import ProportionalController
 from src.core.estimator import ExtendedKalmanFilterEstimator
 from src.core.model import PhysiologyModel
@@ -19,7 +20,8 @@ def build_simulator():
         time_minutes=0.0,
         glucose=model_config.glucose_basal,
         insulin=model_config.insulin_basal,
-        carb_pool=0.0,
+        carb_stomach=0.0,
+        carb_intestine=0.0,
         interstitium=model_config.glucose_basal,
         insulin_rate=0.0,
         sport_multiplier=1.0,

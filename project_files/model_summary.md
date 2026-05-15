@@ -2,11 +2,12 @@
 
 ## 1. Short Description of the System
 The implemented system is a low-order physiological digital twin for
-blood glucose and insulin dynamics. It models four coupled continuous
+blood glucose and insulin dynamics. It models five coupled continuous
 states:
 - Plasma glucose concentration in blood
 - Effective insulin level
-- Carbohydrate pool (meal absorption reservoir)
+- Stomach carbohydrate reservoir
+- Intestinal carbohydrate reservoir
 - Interstitial glucose (the sensor signal for the controller)
 
 The model is integrated in continuous time over fixed simulation steps
@@ -52,7 +53,8 @@ Slowly changing/constant model parameters (`ModelConfig`):
 - Basal levels: `glucose_basal`, `insulin_basal`
 - Dynamics: `glucose_decay`, `insulin_decay`
 - Couplings: `insulin_sensitivity`, `insulin_response_gain`
-- Meal dynamics: `meal_absorption_rate`, `carb_to_glucose_gain`
+- Meal dynamics: `stomach_tau_minutes`, `intestine_tau_minutes`,
+  `carb_to_glucose_gain`
 - Interstitium dynamics: `interstitium_tau_minutes` (time constant for
   sensor dynamics)
 - Safety clamps: `min_glucose`, `max_glucose`, `min_insulin`,
@@ -70,7 +72,8 @@ $$
 \begin{bmatrix}
 G \\
 I \\
-C \\
+C_{\mathrm{stomach}} \\
+C_{\mathrm{intestine}} \\
 G_{\mathrm{int}}
 \end{bmatrix}
 $$
@@ -148,7 +151,12 @@ $$
 $$
 
 $$
-\frac{dC}{dt} = -k_a\,C
+\frac{dC_{\mathrm{stomach}}}{dt} = -\frac{1}{\tau_s} C_{\mathrm{stomach}}
+$$
+
+$$
+\frac{dC_{\mathrm{intestine}}}{dt} = \frac{1}{\tau_s} C_{\mathrm{stomach}} -
+\frac{1}{\tau_i} C_{\mathrm{intestine}}
 $$
 
 $$
@@ -167,7 +175,9 @@ k_a &= \texttt{meal\_absorption\_rate}, &
 k_c &= \texttt{carb\_to\_glucose\_gain}, \\
 G_b &= \texttt{glucose\_basal}, &
 I_b &= \texttt{insulin\_basal}, \\
-\tau &= \texttt{interstitium\_tau\_minutes} &
+	au_s &= \texttt{stomach\_tau\_minutes}, &
+	au_i &= \texttt{intestine\_tau\_minutes}, &
+	au &= \texttt{interstitium\_tau\_minutes} &
 \end{aligned}
 $$
 
@@ -201,6 +211,7 @@ $$
   validation, not a personalized clinical estimator.
 - It intentionally favors robustness and explainability over high-order
   physiological fidelity.
-- Meal response is tuned conservatively for benchmark replay; repeated
-  meals are expected to accumulate gradually rather than spike the
-  system in one step.
+- Meal response now uses a two-compartment stomach/intestine structure
+  tuned on Phase 1 validation windows. The current defaults are
+  `stomach_tau_minutes=18.0`, `intestine_tau_minutes=40.0`, and
+  `interstitium_tau_minutes=8.0`.

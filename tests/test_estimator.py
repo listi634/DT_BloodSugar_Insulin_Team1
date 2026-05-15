@@ -18,7 +18,8 @@ def _build_estimator() -> ExtendedKalmanFilterEstimator:
         time_minutes=0.0,
         glucose=7.0,
         insulin=model_config.insulin_basal,
-        carb_pool=0.0,
+        carb_stomach=0.0,
+        carb_intestine=0.0,
         interstitium=7.0,
         insulin_rate=0.0,
         sport_multiplier=1.0,
@@ -45,7 +46,7 @@ def test_predict_advances_state_and_covariance() -> None:
     assert next_state.time_minutes == pytest.approx(1.0)
     assert next_state.interstitium != pytest.approx(7.0)
     covariance = estimator.covariance
-    assert covariance.shape == (4, 4)
+    assert covariance.shape == (5, 5)
     assert covariance[0, 0] > 0.0
 
 
@@ -79,7 +80,8 @@ def test_insulin_process_noise_can_be_overridden() -> None:
         time_minutes=0.0,
         glucose=7.0,
         insulin=model_config.insulin_basal,
-        carb_pool=0.0,
+        carb_stomach=0.0,
+        carb_intestine=0.0,
         interstitium=7.0,
         insulin_rate=0.0,
         sport_multiplier=1.0,
@@ -95,7 +97,7 @@ def test_insulin_process_noise_can_be_overridden() -> None:
             measurement_noise_variance=0.04,
         ),
     )
-    estimator.set_covariance(np.zeros((4, 4), dtype=float))
+    estimator.set_covariance(np.zeros((5, 5), dtype=float))
     estimator.predict(dt_minutes=1.0, control_input=0.0)
 
     covariance = estimator.covariance

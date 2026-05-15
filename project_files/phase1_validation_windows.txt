@@ -1,0 +1,23 @@
+Phase 1 Validation Windows
+======================================================================
+
+User: U001
+Date Range: 2024-09-01 to 2024-09-01 (24.0 hours)
+Dynamics: 8 meals, 7 boluses
+Initial glucose: 7.06 mmol/L
+
+User: U001
+Date Range: 2024-09-01 to 2024-09-02 (48.0 hours)
+Dynamics: 15 meals, 14 boluses
+Initial glucose: 7.06 mmol/L
+
+User: U002
+Date Range: 2024-09-01 to 2024-09-01 (24.0 hours)
+Dynamics: 9 meals, 8 boluses
+Initial glucose: 5.36 mmol/L
+
+User: U002
+Date Range: 2024-09-01 to 2024-09-02 (48.0 hours)
+Dynamics: 14 meals, 13 boluses
+Initial glucose: 5.36 mmol/L
+

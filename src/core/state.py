@@ -20,9 +20,10 @@ class ModelConfig:
     insulin_decay: float = 0.05
     insulin_sensitivity: float = 0.06
     insulin_response_gain: float = 0.32
-    meal_absorption_rate: float = 0.045
+    stomach_tau_minutes: float = 18.0
+    intestine_tau_minutes: float = 40.0
     carb_to_glucose_gain: float = 0.0015
-    interstitium_tau_minutes: float = 10.0
+    interstitium_tau_minutes: float = 8.0
     min_glucose: float = 2.0
     max_glucose: float = 20.0
     min_insulin: float = 0.0
@@ -36,8 +37,10 @@ class ModelConfig:
             raise ValueError("glucose_basal must be positive")
         if self.insulin_basal <= 0.0:
             raise ValueError("insulin_basal must be positive")
-        if self.meal_absorption_rate <= 0.0:
-            raise ValueError("meal_absorption_rate must be positive")
+        if self.stomach_tau_minutes <= 0.0:
+            raise ValueError("stomach_tau_minutes must be positive")
+        if self.intestine_tau_minutes <= 0.0:
+            raise ValueError("intestine_tau_minutes must be positive")
         if self.interstitium_tau_minutes <= 0.0:
             raise ValueError("interstitium_tau_minutes must be positive")
         if self.min_glucose >= self.max_glucose:
@@ -184,7 +187,8 @@ class SimulationState:
     time_minutes: float
     glucose: float
     insulin: float
-    carb_pool: float
+    carb_stomach: float
+    carb_intestine: float
     interstitium: float
     insulin_rate: float
     sport_multiplier: float
@@ -198,8 +202,9 @@ class SimulationSnapshot:
     time_minutes: float
     glucose: float
     insulin: float
+    carb_stomach: float
+    carb_intestine: float
     interstitium: float
     insulin_rate: float
-    carb_pool: float
     sport_multiplier: float
     sport_minutes_remaining: float

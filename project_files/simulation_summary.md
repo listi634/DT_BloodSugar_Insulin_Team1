@@ -4,7 +4,8 @@
 The simulation coordinates user disturbances, measurement assimilation,
 control decisions, and physiology prediction in a deterministic step
 loop. It provides a reproducible runtime for studying glucose-insulin
-behavior and control responses under meal events.
+behavior and control responses under meal events and validation replay
+windows.
 
 Primary goals:
 - Execute a deterministic update pipeline every step
@@ -16,6 +17,8 @@ Expected outputs:
 - Time traces of glucose, insulin, and insulin infusion rate
 - Observable response to meals (glucose rise)
 - Automated controller compensation after disturbances
+- Validation replay traces that overlay measured CGM data and report
+  RMSE, MAE, and oscillation counts
 - Moderate single-meal excursions that remain below the hard glucose
   clamp under the current tuned defaults
 
@@ -46,7 +49,8 @@ Current interactions:
   arrive.
 - Validation users: GUI can preload GlucoBench windows (user/start/end)
   and replay carbohydrate events plus glucose measurements from dataset
-  timestamps
+  timestamps. The validation workflow also writes a CSV summary and PNG
+  plots for each selected window.
 - Machines/Libraries: SciPy ODE solver (`solve_ivp`), plotting/UI stack,
   EKF-based estimator scaffold
 - Databases/Sensors/Protocols: not connected in V1
@@ -55,8 +59,8 @@ Current interactions:
 
 ### Internal interfaces (sub-model integration)
 - `GlucoseSimulator` -> `ExtendedKalmanFilterEstimator`:
-  `predict(dt_minutes, control_input)` and `update(measured_interstitium)`
-  for interstitial glucose correction.
+  `predict_with_details(dt_minutes, control_input)` and
+  `update(measured_interstitium)` for interstitial glucose correction.
 - `GlucoseSimulator` -> `ProportionalController`:
   `compute_insulin_rate(glucose, current_rate, config)` — **Note**: The
   `glucose` parameter receives the corrected interstitial estimate, not
@@ -158,7 +162,8 @@ $$
 \begin{bmatrix}
 G_k \\
 I_k \\
-C_k \\
+ C_{\mathrm{stomach},k} \\
+ C_{\mathrm{intestine},k} \\
 G_{\mathrm{int},k}
 \end{bmatrix},
 \qquad
@@ -198,14 +203,21 @@ for validation and for prospective what‑if forecasting:
 
 - Replay / Inference: controller actions are disabled and the EKF is
   used to infer latent insulin dynamics from measured interstitial
-  glucose. This mode is intended for post‑hoc reconstruction of
-  insulin with documented estimator tuning (increased insulin process
-  noise) and optional offline smoothing. The GUI overlays the RTS
-  smoothed insulin trace after replay completion.
+  glucose. This mode is intended for post-hoc reconstruction of
+  insulin with documented estimator tuning and optional offline
+  smoothing. The GUI overlays the RTS smoothed insulin trace after
+  replay completion.
 - Prediction / What‑If: used when simulating a future scenario (for
   example after a queued meal). Predictions run open‑loop: they accept
   an explicit bolus event (recorded or calculated) applied before the
   model propagation and do not ingest further benchmark measurements.
+
+Validation note:
+- Phase 1 validation currently uses tuned meal absorption defaults
+  (`stomach_tau_minutes=18.0`, `intestine_tau_minutes=40.0`) and a
+  faster interstitial time constant (`interstitium_tau_minutes=8.0`).
+  These settings improved the replay metrics compared with the original
+  baseline.
 
 Implementation notes:
 

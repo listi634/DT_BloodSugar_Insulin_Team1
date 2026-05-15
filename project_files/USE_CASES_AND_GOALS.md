@@ -1,7 +1,7 @@
 # Use Cases and High-Level Goals
 
-Version: 1.0
-Last Updated: 2026-05-03
+Version: 1.1
+Last Updated: 2026-05-14
 
 Purpose
 -------
@@ -33,8 +33,9 @@ Virtual & physical entities
   logging (meals). Units: mg/dL (primary) and mmol/L (supported).
 - Virtual: Low-order grey-box compartmental model (E-DES style) representing
   stomach/intestine, plasma glucose & insulin, and interstitium. The model
-  is a tool for state estimation (insulin inference) and short-term
-  prediction.
+  uses a two-compartment meal absorption path and is a tool for state
+  estimation (insulin inference), short-term prediction, and replay-based
+  validation.
 
 Primary use-cases
 ------------------
@@ -42,8 +43,8 @@ Primary use-cases
    - Load recorded CGM time series and associated meal events.
    - Run estimator to infer unobserved states (e.g., insulin) and compare
      simulated interstitial glucose with recorded CGM traces.
-   - Use metrics (RMSE, hypoglycemia/hyperglycemia detection) for
-     evaluation.
+   - Use metrics (RMSE, MAE, oscillation counts, hypoglycemia/
+     hyperglycemia detection) for evaluation.
 
 2. Meal-triggered prediction
    - When a meal event is reached during replay, pause the simulation and
@@ -71,6 +72,8 @@ Acceptance criteria (high-level)
   integrate → save history.
 - The simulator must expose a reproducible example scenario (small CSV
   snippet) that can act as a golden test for future changes.
+- Phase 1 validation should remain reproducible through the generated
+  validation windows and metrics artifacts in `project_files/phase1_results`.
 
 Developer rules
 ---------------

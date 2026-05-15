@@ -24,7 +24,8 @@ def _build_simulator() -> GlucoseSimulator:
         time_minutes=0.0,
         glucose=model_config.glucose_basal,
         insulin=model_config.insulin_basal,
-        carb_pool=0.0,
+        carb_stomach=0.0,
+        carb_intestine=0.0,
         interstitium=model_config.glucose_basal,
         insulin_rate=0.0,
         sport_multiplier=1.0,
@@ -60,7 +61,7 @@ def test_event_then_control_then_integrate_order() -> None:
 
     final = simulator.history[-1]
     assert final.glucose > first.glucose
-    assert final.carb_pool > 0.0
+    assert final.carb_stomach + final.carb_intestine > 0.0
 
 
 def test_sport_event_applies_temporary_sensitivity_boost() -> None:
@@ -85,7 +86,8 @@ def test_reset_restores_initial_state_and_history() -> None:
 
     assert len(simulator.history) == 1
     assert simulator.current_state.time_minutes == 0.0
-    assert simulator.current_state.carb_pool == 0.0
+    assert simulator.current_state.carb_stomach == 0.0
+    assert simulator.current_state.carb_intestine == 0.0
 
 
 def test_simulator_accepts_explicit_integrator_config() -> None:
@@ -96,7 +98,8 @@ def test_simulator_accepts_explicit_integrator_config() -> None:
         time_minutes=0.0,
         glucose=model_config.glucose_basal,
         insulin=model_config.insulin_basal,
-        carb_pool=0.0,
+        carb_stomach=0.0,
+        carb_intestine=0.0,
         interstitium=model_config.glucose_basal,
         insulin_rate=0.0,
         sport_multiplier=1.0,
@@ -129,7 +132,8 @@ def test_controller_reads_interstitium_not_plasma_glucose() -> None:
         time_minutes=0.0,
         glucose=10.0,
         insulin=model_config.insulin_basal,
-        carb_pool=0.0,
+        carb_stomach=0.0,
+        carb_intestine=0.0,
         interstitium=5.5,
         insulin_rate=0.0,
         sport_multiplier=1.0,
@@ -156,7 +160,7 @@ def test_measurement_input_keeps_meal_replay_available() -> None:
     snapshot = simulator.step(measured_interstitium=6.0)
 
     assert snapshot.time_minutes == ModelConfig().dt_minutes
-    assert snapshot.carb_pool > 0.0
+    assert snapshot.carb_stomach + snapshot.carb_intestine > 0.0
 
 
 def test_step_without_controller_keeps_insulin_rate() -> None:

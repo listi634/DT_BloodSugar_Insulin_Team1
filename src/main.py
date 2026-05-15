@@ -35,12 +35,13 @@ def build_simulator(
     from src.core.state import ModelConfig
     from src.core.state import SimulationState
 
-    model_config = ModelConfig()
-    glucose_start = model_config.glucose_basal
     if initial_glucose_mmol_l is not None:
         if initial_glucose_mmol_l <= 0.0:
             raise ValueError("initial_glucose_mmol_l must be positive")
-        glucose_start = initial_glucose_mmol_l
+        model_config = ModelConfig(glucose_basal=initial_glucose_mmol_l)
+    else:
+        model_config = ModelConfig()
+    glucose_start = model_config.glucose_basal
 
     controller_config = ControllerConfig()
     integrator_config = IntegratorConfig(method=integrator_method)
@@ -48,7 +49,8 @@ def build_simulator(
         time_minutes=0.0,
         glucose=glucose_start,
         insulin=model_config.insulin_basal,
-        carb_pool=0.0,
+        carb_stomach=0.0,
+        carb_intestine=0.0,
         interstitium=glucose_start,
         insulin_rate=0.0,
         sport_multiplier=1.0,

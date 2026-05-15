@@ -392,7 +392,7 @@ class DigitalTwinApp(ctk.CTk):
         csv_path = (
             Path(__file__).resolve().parents[2]
             / "data"
-            / "GlucoBench_benchmark_dataset.csv"
+            / "CGM.csv"
         )
         try:
             self._benchmark_loader = GlucoBenchLoader(csv_path)

@@ -209,7 +209,7 @@ class GlucoseSimulator:
     def _apply_pending_events(self) -> None:
         """Apply user events before controller and model integration."""
         if self._pending.meal_carbs > 0.0:
-            self._state.carb_pool += self._pending.meal_carbs
+            self._state.carb_stomach += self._pending.meal_carbs
 
         if self._pending.sport_event is not None:
             sport_event = self._pending.sport_event
@@ -238,9 +238,10 @@ class GlucoseSimulator:
             time_minutes=state.time_minutes,
             glucose=state.glucose,
             insulin=state.insulin,
+            carb_stomach=state.carb_stomach,
+            carb_intestine=state.carb_intestine,
             interstitium=state.interstitium,
             insulin_rate=state.insulin_rate,
-            carb_pool=state.carb_pool,
             sport_multiplier=state.sport_multiplier,
             sport_minutes_remaining=state.sport_minutes_remaining,
         )

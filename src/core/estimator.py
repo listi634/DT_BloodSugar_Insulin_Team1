@@ -42,7 +42,7 @@ class ExtendedKalmanFilterEstimator:
         self._model_config = model_config
         self._config = config
         self._state = replace(initial_state)
-        self._covariance = np.eye(4, dtype=float) * config.initial_covariance
+        self._covariance = np.eye(5, dtype=float) * config.initial_covariance
 
     @property
     def current_state(self) -> SimulationState:
@@ -56,8 +56,8 @@ class ExtendedKalmanFilterEstimator:
 
     def set_covariance(self, covariance: np.ndarray) -> None:
         """Replace the EKF covariance matrix with validated input."""
-        if covariance.shape != (4, 4):
-            raise ValueError("covariance must be a 4x4 matrix")
+        if covariance.shape != (5, 5):
+            raise ValueError("covariance must be a 5x5 matrix")
         if not np.isfinite(covariance).all():
             raise ValueError("covariance must contain finite values")
         self._covariance = covariance.copy()
@@ -134,8 +134,8 @@ class ExtendedKalmanFilterEstimator:
 
             predicted_covariance = next_step.predicted_covariance
             transition = next_step.transition
-            if predicted_covariance.shape != (4, 4):
-                raise ValueError("predicted_covariance must be 4x4")
+            if predicted_covariance.shape != (5, 5):
+                raise ValueError("predicted_covariance must be 5x5")
 
             gain = (
                 current.updated_covariance
@@ -173,9 +173,9 @@ class ExtendedKalmanFilterEstimator:
             raise ValueError("measured_interstitium must be non-negative")
 
         state_vector = self._state_to_vector(self._state)
-        innovation = measured_interstitium - state_vector[3]
-        observation = np.zeros((1, 4), dtype=float)
-        observation[0, 3] = 1.0
+        innovation = measured_interstitium - state_vector[4]
+        observation = np.zeros((1, 5), dtype=float)
+        observation[0, 4] = 1.0
         innovation_covariance = (
             observation @ self._covariance @ observation.T
             + np.array(
@@ -191,7 +191,7 @@ class ExtendedKalmanFilterEstimator:
         updated_vector = state_vector + kalman_gain.flatten() * innovation
 
         updated_covariance = (
-            np.eye(4, dtype=float) - kalman_gain @ observation
+            np.eye(5, dtype=float) - kalman_gain @ observation
         ) @ self._covariance
         updated_covariance += (
             kalman_gain
@@ -214,8 +214,10 @@ class ExtendedKalmanFilterEstimator:
             raise ValueError("state.glucose must be non-negative")
         if state.insulin < 0.0:
             raise ValueError("state.insulin must be non-negative")
-        if state.carb_pool < 0.0:
-            raise ValueError("state.carb_pool must be non-negative")
+        if state.carb_stomach < 0.0:
+            raise ValueError("state.carb_stomach must be non-negative")
+        if state.carb_intestine < 0.0:
+            raise ValueError("state.carb_intestine must be non-negative")
         if state.interstitium < 0.0:
             raise ValueError("state.interstitium must be non-negative")
         if state.insulin_rate < 0.0:
@@ -236,10 +238,10 @@ class ExtendedKalmanFilterEstimator:
     ) -> np.ndarray:
         """Estimate the linearized transition matrix by finite differences."""
         baseline_vector = self._state_to_vector(baseline)
-        jacobian = np.zeros((4, 4), dtype=float)
+        jacobian = np.zeros((5, 5), dtype=float)
         state_vector = self._state_to_vector(state)
 
-        for index in range(4):
+        for index in range(5):
             perturbation = max(
                 self._config.finite_difference_step,
                 abs(state_vector[index]) * 1e-4,
@@ -268,7 +270,7 @@ class ExtendedKalmanFilterEstimator:
         if insulin_scale is None:
             insulin_scale = scale
         return np.diag(
-            [scale, insulin_scale, scale, scale],
+            [scale, insulin_scale, scale, scale, scale],
         ).astype(float)
 
     def _symmetrize_covariance(self) -> None:
@@ -286,7 +288,8 @@ class ExtendedKalmanFilterEstimator:
             [
                 state.glucose,
                 state.insulin,
-                state.carb_pool,
+                state.carb_stomach,
+                state.carb_intestine,
                 state.interstitium,
             ],
             dtype=float,
@@ -302,8 +305,9 @@ class ExtendedKalmanFilterEstimator:
             template,
             glucose=float(vector[0]),
             insulin=float(vector[1]),
-            carb_pool=max(0.0, float(vector[2])),
-            interstitium=float(vector[3]),
+            carb_stomach=max(0.0, float(vector[2])),
+            carb_intestine=max(0.0, float(vector[3])),
+            interstitium=float(vector[4]),
         )
 
     def _clamp_state(self, state: SimulationState) -> SimulationState:
@@ -318,7 +322,8 @@ class ExtendedKalmanFilterEstimator:
                 self._model_config.min_insulin,
                 min(state.insulin, self._model_config.max_insulin),
             ),
-            carb_pool=max(0.0, state.carb_pool),
+            carb_stomach=max(0.0, state.carb_stomach),
+            carb_intestine=max(0.0, state.carb_intestine),
             interstitium=max(
                 self._model_config.min_glucose,
                 min(state.interstitium, self._model_config.max_glucose),
