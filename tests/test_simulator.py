@@ -181,3 +181,32 @@ def test_bolus_event_increases_insulin_state() -> None:
     snapshot = simulator.step()
 
     assert snapshot.insulin > baseline
+
+
+def test_bolus_is_subcutaneous_not_instant_plasma() -> None:
+    """Bolus should be stored subcutaneously and not instantly spike plasma.
+
+    This guards against applying bolus units directly to `insulin`.
+    """
+    simulator_no_bolus = _build_simulator()
+    simulator_bolus = _build_simulator()
+
+    # Apply meal only to both
+    simulator_no_bolus.queue_meal(45.0)
+    simulator_bolus.queue_meal(45.0)
+
+    # Baseline insulin values
+    baseline = simulator_bolus.current_state.insulin
+
+    # Apply bolus to the second simulator
+    simulator_bolus.queue_bolus(units=3.4)
+
+    snap_no = simulator_no_bolus.step(measured_interstitium=5.0, use_controller=False)
+    snap_b = simulator_bolus.step(measured_interstitium=5.0, use_controller=False)
+
+    # The immediate plasma insulin increase should be much smaller than the
+    # bolus units (because bolus is absorbed subcutaneously over time).
+    increase = snap_b.insulin - baseline
+    assert increase < 0.5 * 3.4
+    # The subcutaneous depot should contain the bolus (or infusion transferred)
+    assert getattr(simulator_bolus.current_state, "insulin_subcutaneous", 0.0) > 0.0

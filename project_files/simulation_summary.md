@@ -9,18 +9,20 @@ windows.
 
 Primary goals:
 - Execute a deterministic update pipeline every step
+- Reproduce recorded CGM traces during replay and validation runs
 - Provide live state/history for visualization
-- Support interactive what-if scenarios through GUI controls
+- Support conservative interactive what-if scenarios through GUI controls
 
 ## 2. Expected Results and Use of Results
 Expected outputs:
 - Time traces of glucose, insulin, and insulin infusion rate
-- Observable response to meals (glucose rise)
+- Observable response to meals or bolus inputs when replayed or
+  simulated conservatively
 - Automated controller compensation after disturbances
 - Validation replay traces that overlay measured CGM data and report
   RMSE, MAE, and oscillation counts
-- Moderate single-meal excursions that remain below the hard glucose
-  clamp under the current tuned defaults
+- Moderate scenario responses that stay interpretable and do not rely on
+  aggressive physiological assumptions
 
 Typical use:
 - Demonstration of closed-loop behavior
@@ -30,8 +32,8 @@ Typical use:
 ## 3. Exactness
 - Numerical exactness: governed by `solve_ivp` method/tolerances from
   `IntegratorConfig`
-- Model exactness: low-order approximation; suitable for education and
-  engineering iteration, not medical diagnosis
+- Model exactness: low-order approximation; suitable for replay,
+  validation, and engineering iteration, not medical diagnosis
 - Determinism: high, given same initial conditions, events, and
   configuration
 
@@ -51,6 +53,10 @@ Current interactions:
   and replay carbohydrate events plus glucose measurements from dataset
   timestamps. The validation workflow also writes a CSV summary and PNG
   plots for each selected window.
+  The GUI now also writes a JSONL replay log per window under
+  `project_files/phase1_results/validation_logs/` containing simulated
+  plasma glucose, interstitium, insulin, and the matched measured CGM and
+  event values for later analysis.
 - Machines/Libraries: SciPy ODE solver (`solve_ivp`), plotting/UI stack,
   EKF-based estimator scaffold
 - Databases/Sensors/Protocols: not connected in V1
@@ -130,6 +136,9 @@ sequenceDiagram
   - Pauses when a meal arrives to allow continue vs. prediction
   - Prediction runs ahead without ingesting new benchmark data and
     leaves a background overlay on the plot
+  - Writes a structured JSONL replay log for the full validation run so
+    simulated and measured values can be reloaded later without rerunning
+    the GUI session
 
 ### Not implemented in V1
 - Save/load simulation snapshots
@@ -138,6 +147,10 @@ sequenceDiagram
 The validation replay path treats benchmark glucose values as
 measurement inputs for the estimator and overlays the same reference in
 the plot. It does not overwrite the simulated glucose state directly.
+
+The prediction path is intentionally conservative: it is meant to show a
+short horizon trend after an event, not to claim that the simulator can
+reconstruct full meal physiology.
 
 ## 8. Simulation Engine
 Engine characteristics:
@@ -195,6 +208,8 @@ flowchart TD
 - Event buffering is step-based; intra-step event timing is not modeled
 - Benchmark meals during prediction are ignored by the simulation
 - Real-time guarantees depend on GUI scheduling and host performance
+- Bolus inputs should be interpreted as replayed scenario signals unless
+  the user has explicitly calibrated them to the model's internal units
 
 ## 11. Replay vs Prediction (Inference / What‑If)
 

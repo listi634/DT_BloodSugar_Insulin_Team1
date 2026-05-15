@@ -158,6 +158,35 @@ class GlucoseSimulator:
         use_controller: bool = True,
     ) -> SimulationSnapshot:
         """Execute one deterministic step of the simulation pipeline."""
+        return self._step(
+            measured_interstitium=measured_interstitium,
+            use_controller=use_controller,
+            assimilate_measurement=True,
+        )
+
+    def step_replay(self, measured_interstitium: float) -> SimulationSnapshot:
+        """Execute one replay step using an external CGM measurement."""
+        return self._step(
+            measured_interstitium=measured_interstitium,
+            use_controller=False,
+            assimilate_measurement=True,
+        )
+
+    def step_prediction(self) -> SimulationSnapshot:
+        """Execute one open-loop prediction step without measurement data."""
+        return self._step(
+            measured_interstitium=None,
+            use_controller=False,
+            assimilate_measurement=False,
+        )
+
+    def _step(
+        self,
+        measured_interstitium: float | None,
+        use_controller: bool,
+        assimilate_measurement: bool,
+    ) -> SimulationSnapshot:
+        """Execute one deterministic step of the simulation pipeline."""
         self._apply_pending_events()
         self._estimator.set_state(self._state)
         predicted_state, transition, predicted_covariance = (
@@ -166,9 +195,12 @@ class GlucoseSimulator:
                 control_input=self._state.insulin_rate,
             )
         )
-        if measured_interstitium is None:
-            measured_interstitium = self._state.interstitium
-        updated_state = self._estimator.update(measured_interstitium)
+        if assimilate_measurement:
+            if measured_interstitium is None:
+                measured_interstitium = self._state.interstitium
+            updated_state = self._estimator.update(measured_interstitium)
+        else:
+            updated_state = predicted_state
         updated_covariance = self._estimator.covariance
 
         estimate = self._estimator.current_state
@@ -221,13 +253,35 @@ class GlucoseSimulator:
 
         if self._pending.bolus_event is not None:
             bolus = self._pending.bolus_event
-            # Instantaneous bolus: add directly to insulin state
             if bolus.over_minutes is None:
-                self._state.insulin += bolus.units
+                frac = getattr(
+                    self._model_config, "insulin_subq_fraction", 1.0
+                )
+                self._state.insulin_subcutaneous += bolus.units * frac
             else:
                 # Short infusion: convert units over minutes to per-minute
+                # input and keep a finite remaining duration so the rate
+                # expires when the requested window ends.
                 rate = bolus.units / bolus.over_minutes
-                self._state.insulin_rate += rate
+                self._state.insulin_subq_rate += rate
+                self._state.insulin_subq_minutes_remaining = max(
+                    self._state.insulin_subq_minutes_remaining,
+                    bolus.over_minutes,
+                )
+
+        # If there's an active short infusion rate, transfer the per-minute
+        # delivered units into the subcutaneous depot over this dt, and
+        # decrement the remaining infusion window.
+        dt = self._model_config.dt_minutes
+        if getattr(self._state, "insulin_subq_rate", 0.0) > 0.0:
+            transfer = self._state.insulin_subq_rate * dt
+            self._state.insulin_subcutaneous += transfer
+            if getattr(self._state, "insulin_subq_minutes_remaining", 0.0) > 0.0:
+                self._state.insulin_subq_minutes_remaining = max(
+                    0.0, self._state.insulin_subq_minutes_remaining - dt
+                )
+            if self._state.insulin_subq_minutes_remaining <= 0.0:
+                self._state.insulin_subq_rate = 0.0
 
         self._pending.clear()
 
@@ -238,6 +292,11 @@ class GlucoseSimulator:
             time_minutes=state.time_minutes,
             glucose=state.glucose,
             insulin=state.insulin,
+            insulin_subcutaneous=getattr(state, "insulin_subcutaneous", 0.0),
+            insulin_subq_rate=getattr(state, "insulin_subq_rate", 0.0),
+            insulin_subq_minutes_remaining=getattr(
+                state, "insulin_subq_minutes_remaining", 0.0
+            ),
             carb_stomach=state.carb_stomach,
             carb_intestine=state.carb_intestine,
             interstitium=state.interstitium,

@@ -17,42 +17,54 @@ simulation behavior or user experience.
 
 Primary persona
 ---------------
-- Diabetes patient or researcher wearing a CGM sensor and interested in
-  predicting and understanding glucose responses to meals and activity.
+- Diabetes patient, coach, or researcher who already has CGM traces and
+  wants to replay them, validate a lightweight model, and explore
+  conservative what-if scenarios after meals or activity.
 
 High-level goal
 ---------------
-Provide a realistic, easy-to-run digital twin that (1) reproduces measured
-interstitial glucose time series when operating on a replayed GlucoBench
-window, and (2) when a meal event arrives, can optionally run a short-term
-free-run prediction without ingesting additional benchmark data.
+Provide a realistic, easy-to-run CGM replay tool that (1) aligns with
+measured interstitial glucose time series during GlucoBench validation
+runs, and (2) when an event occurs, can optionally launch a short,
+conservative free-run prediction without ingesting new benchmark data.
 
 Virtual & physical entities
 ---------------------------
 - Physical: Human subject with CGM (interstitial glucose) and event
-  logging (meals). Units: mg/dL (primary) and mmol/L (supported).
-- Virtual: Low-order grey-box compartmental model (E-DES style) representing
-  stomach/intestine, plasma glucose & insulin, and interstitium. The model
-  uses a two-compartment meal absorption path and is a tool for state
-  estimation (insulin inference), short-term prediction, and replay-based
-  validation.
+  logging (meals, optional bolus records). Units: mg/dL (primary) and
+  mmol/L (supported).
+- Virtual: Low-order grey-box compartmental model representing
+  stomach/intestine, glucose, insulin, and interstitium. The model is a
+  replay-and-forecast surrogate, not a clinically validated physiology
+  simulator.
 
 Primary use-cases
 ------------------
 1. Replay / Validation run
-   - Load recorded CGM time series and associated meal events.
-   - Run estimator to infer unobserved states (e.g., insulin) and compare
-     simulated interstitial glucose with recorded CGM traces.
-   - Use metrics (RMSE, MAE, oscillation counts, hypoglycemia/
-     hyperglycemia detection) for evaluation.
+   - Load recorded CGM time series and associated meal / bolus events.
+   - Run the estimator to infer latent states and compare simulated
+     interstitial glucose against the recorded CGM trace.
+   - Use metrics such as RMSE, MAE, oscillation counts, and hypo-/
+     hyperglycemia detection to judge replay quality.
+   - Write an AI-friendly JSONL replay log with simulated plasma glucose,
+     interstitium, insulin, and the measured benchmark values used in the
+     validation window so the run can be analyzed later.
 
 2. Meal-triggered prediction
    - When a meal event is reached during replay, pause the simulation and
-     allow the user to continue or run a short-term prediction.
-   - The prediction runs forward without ingesting new benchmark data and
-     leaves a background overlay for comparison.
+     allow the user to continue or launch a short-term prediction.
+   - The prediction runs forward without ingesting further benchmark data
+     and leaves a background overlay for visual comparison.
 
-3. Developer / Offline analysis
+3. Conservative what-if analysis
+   - Let the user test small meal or bolus changes and inspect the trend
+     direction rather than interpret the output as a clinical dose
+     recommendation.
+   - Keep the scenario intentionally conservative so the app is useful
+     for intuition building, parameter sensitivity checks, and model
+     debugging.
+
+4. Developer / Offline analysis
    - Use the model to generate reproducible scenarios for testing,
      controller tuning, and sensitivity analysis.
 
@@ -63,6 +75,8 @@ Data & events
   available (timestamp, bolus units).
 - Reference datasets are kept in the `data/` folder and should be used as
   canonical examples.
+- The benchmark data should be treated as replay/validation material, not
+  as proof that every meal has a large immediate glucose spike.
 
 Acceptance criteria (high-level)
 --------------------------------
@@ -74,6 +88,11 @@ Acceptance criteria (high-level)
   snippet) that can act as a golden test for future changes.
 - Phase 1 validation should remain reproducible through the generated
   validation windows and metrics artifacts in `project_files/phase1_results`.
+
+Success for the project means the app can explain and replay CGM behavior
+well enough to support comparison, sensitivity analysis, and cautious
+future prediction. It does not need to promise clinical-grade meal
+physiology.
 
 Developer rules
 ---------------
@@ -91,6 +110,8 @@ Safety & privacy
 - This project is a research tool and not a medical device. All
   recommendations are advisory and must carry a clear disclaimer in the
   UI.
+- Insulin and meal inputs should be framed as scenario inputs for replay
+  and what-if analysis, not as prescriptive treatment advice.
 - Treat CGM traces and timestamps as sensitive data; follow institutional
   policies for PHI if present.
 

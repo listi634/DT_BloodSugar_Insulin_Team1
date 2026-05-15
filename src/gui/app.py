@@ -12,6 +12,7 @@ from src.core.benchmark_loader import ValidationWindowData
 from src.core.estimator import ExtendedKalmanFilterEstimator
 from src.core.simulator import GlucoseSimulator
 from src.core.simulator import SimulatorSnapshot
+from src.core.validation_logger import ValidationReplayLogger
 from src.core.state import IntegratorMethod
 from src.core.utilities import collect_due_carb_events
 from src.core.utilities import collect_due_insulin_events
@@ -125,6 +126,7 @@ class DigitalTwinApp(ctk.CTk):
         self._premeal_snapshot: SimulatorSnapshot | None = None
         self._prediction_overlay: PredictionOverlay | None = None
         self._smoothed_overlay: SmoothedOverlay | None = None
+        self._validation_logger: ValidationReplayLogger | None = None
         self._awaiting_resume = False
         self._prediction_horizon_minutes = 1200.0
 
@@ -222,6 +224,7 @@ class DigitalTwinApp(ctk.CTk):
         self._cancel_schedule()
         self._running = False
         self.control_panel.set_running(False)
+        self._close_validation_logger()
         self._validation = ValidationRunState()
         self._simulator = self._simulator_builder(
             self._integrator_method, None
@@ -251,6 +254,7 @@ class DigitalTwinApp(ctk.CTk):
         self._cancel_schedule()
         self._running = False
         self.control_panel.set_running(False)
+        self._close_validation_logger()
         self._pending_meal_carbs = None
         self._pending_bolus_units = []
         self._premeal_snapshot = None
@@ -304,21 +308,27 @@ class DigitalTwinApp(ctk.CTk):
             if due_insulin:
                 self._apply_bolus_units(due_insulin)
 
-        measured_interstitium = None
         if self._validation.loaded:
             measured_interstitium = self._inject_validation_measurement()
-
-        use_controller = not self._validation.loaded
-        self._simulator.step(
-            measured_interstitium=measured_interstitium,
-            use_controller=use_controller,
-        )
+            # Replay step: assimilate measurement, disable controller
+            snapshot = self._simulator.step_replay(measured_interstitium)
+            self._append_validation_log(
+                snapshot=snapshot,
+                mode="replay",
+                measured_glucose_mmol_l=measured_interstitium,
+                due_carb_grams=sum(due_carbs),
+                due_bolus_units=sum(due_insulin),
+            )
+        else:
+            # Idle/manual runs keep controller active
+            self._simulator.step()
         self._refresh_view()
 
         if self._validation.loaded and self._is_validation_finished():
             self._running = False
             self.control_panel.set_running(False)
             self._refresh_smoothed_overlay()
+            self._close_validation_logger()
             self._set_status(
                 "Validation run finished at selected end timestamp."
             )
@@ -329,6 +339,7 @@ class DigitalTwinApp(ctk.CTk):
     def _refresh_view(self) -> None:
         """Refresh chart and metric labels from simulator history/state."""
         time, glucose, insulin, _ = self._simulator.get_history_arrays()
+        interstitium = [s.interstitium for s in self._simulator.history]
         glucose_reference = None
         carb_reference = None
         if self._validation.loaded:
@@ -338,6 +349,7 @@ class DigitalTwinApp(ctk.CTk):
             time,
             glucose,
             insulin,
+            interstitium,
             actual_glucose_reference=glucose_reference,
             carb_reference=carb_reference,
             prediction_time=(
@@ -385,15 +397,12 @@ class DigitalTwinApp(ctk.CTk):
     def _on_close(self) -> None:
         """Ensure scheduled callbacks are canceled before app closes."""
         self._cancel_schedule()
+        self._close_validation_logger()
         self.destroy()
 
     def _setup_validation_data(self) -> None:
         """Initialize benchmark loader and validation selectors."""
-        csv_path = (
-            Path(__file__).resolve().parents[2]
-            / "data"
-            / "CGM.csv"
-        )
+        csv_path = Path(__file__).resolve().parents[2] / "data" / "CGM.csv"
         try:
             self._benchmark_loader = GlucoBenchLoader(csv_path)
             user_ids = self._benchmark_loader.get_user_ids()
@@ -470,6 +479,7 @@ class DigitalTwinApp(ctk.CTk):
         self._cancel_schedule()
         self._running = False
         self.control_panel.set_running(False)
+        self._close_validation_logger()
         self._pending_meal_carbs = None
         self._premeal_snapshot = None
         self._prediction_overlay = None
@@ -482,6 +492,16 @@ class DigitalTwinApp(ctk.CTk):
         self._simulator = self._simulator_builder(
             self._integrator_method,
             window.initial_glucose_mmol_l,
+        )
+        self._close_validation_logger()
+        self._validation_logger = ValidationReplayLogger(
+            output_dir=(
+                Path(__file__).resolve().parents[2]
+                / "logs"
+            ),
+            window=window,
+            model_config=self._simulator.model_config,
+            initial_state=self._simulator.current_state,
         )
         self._refresh_view()
 
@@ -528,6 +548,34 @@ class DigitalTwinApp(ctk.CTk):
         )
         self._validation.insulin_replay_index = next_index
         return due_units
+
+    def _append_validation_log(
+        self,
+        snapshot: SimulatorSnapshot,
+        mode: str,
+        measured_glucose_mmol_l: float | None,
+        due_carb_grams: float,
+        due_bolus_units: float,
+    ) -> None:
+        """Append one validation step to the active replay log."""
+        if self._validation_logger is None:
+            return
+
+        self._validation_logger.record_step(
+            snapshot=snapshot,
+            mode=mode,
+            measured_glucose_mmol_l=measured_glucose_mmol_l,
+            due_carb_grams=due_carb_grams,
+            due_bolus_units=due_bolus_units,
+        )
+
+    def _close_validation_logger(self) -> None:
+        """Close the active validation replay log, if any."""
+        if self._validation_logger is None:
+            return
+
+        self._validation_logger.close()
+        self._validation_logger = None
 
     def _inject_validation_measurement(self) -> float | None:
         """Return the latest measurement due for the current tick."""
@@ -648,10 +696,9 @@ class DigitalTwinApp(ctk.CTk):
 
     def _apply_bolus_units(self, units_list: list[float]) -> None:
         """Queue each pending bolus unit value into the simulator."""
-        for units in units_list:
-            if units <= 0.0:
-                continue
-            self._simulator.queue_bolus(units)
+        total_units = sum(units for units in units_list if units > 0.0)
+        if total_units > 0.0:
+            self._simulator.queue_bolus(total_units)
 
     def _refresh_smoothed_overlay(self) -> None:
         """Compute and store RTS-smoothed insulin overlay after replay."""
@@ -701,10 +748,7 @@ class DigitalTwinApp(ctk.CTk):
             self._simulator.queue_meal(meal_carbs)
             self._apply_bolus_units(self._pending_bolus_units)
             for _ in range(steps):
-                self._simulator.step(
-                    measured_interstitium=None,
-                    use_controller=False,
-                )
+                self._simulator.step_prediction()
         except ValueError as exc:
             self._set_status(str(exc))
             self._simulator.restore_snapshot(snapshot)

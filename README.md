@@ -13,8 +13,8 @@ developed as part of the Digital Twin lecture.
 ## Project Overview
 
 This project implements a modular digital twin simulation for blood glucose
-and insulin dynamics. It models the physiological relationships between
-meals, insulin dosing, and blood glucose levels, and combines a simulation
+and insulin dynamics. It focuses on CGM replay, validation, and cautious
+what-if prediction around meal and bolus events, and combines a simulation
 core with a responsive GUI for interactive experiments.
 
 **Language**: Python 3.13  
@@ -148,6 +148,8 @@ This project follows the **Google Python Style Guide**.
 - ✅ **Docstrings**: Google format, required for all public functions
 - ✅ **Imports**: Use full package names, order: stdlib → third-party → local
 - ✅ **Comments**: Explain **why**, not **what**
+- ✅ **Scope**: Frame the simulator as replay/validation-first rather than
+    clinical-grade physiology
 
 ### Example
 

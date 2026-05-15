@@ -32,7 +32,16 @@ class PlotFrame(ctk.CTkFrame):
             [],
             color="#D7263D",
             linewidth=2.0,
-            label="Simulated Glucose",
+            label="Plasma Glucose",
+        )[0]
+        self.line_interstitium = self.ax_glucose.plot(
+            [],
+            [],
+            color="#F08A5D",
+            linewidth=2.0,
+            linestyle="--",
+            alpha=0.9,
+            label="Interstitial (sim CGM)",
         )[0]
         self.line_glucose_prediction = self.ax_glucose.plot(
             [],
@@ -49,7 +58,7 @@ class PlotFrame(ctk.CTkFrame):
             color="#2E86AB",
             linewidth=1.8,
             linestyle="--",
-            label="Actual Glucose (Ref)",
+            label="Actual Glucose (CGM)",
         )[0]
         self.line_carb_reference = self.ax_carb.plot(
             [],
@@ -119,6 +128,7 @@ class PlotFrame(ctk.CTkFrame):
         time_minutes: list[float],
         glucose_values: list[float],
         insulin_values: list[float],
+        interstitium_values: list[float] | None = None,
         actual_glucose_reference: Sequence[tuple[float, float]] | None = None,
         carb_reference: Sequence[tuple[float, float]] | None = None,
         prediction_time: list[float] | None = None,
@@ -140,9 +150,12 @@ class PlotFrame(ctk.CTkFrame):
         carb_ref_values = [point[1] for point in carb_overlay]
 
         self.line_glucose.set_data(time_minutes, glucose_values)
+        self.line_insulin.set_data(time_minutes, insulin_values)
+        if interstitium_values is not None:
+            self.line_interstitium.set_data(time_minutes, interstitium_values)
         self.line_glucose_actual.set_data(glucose_ref_time, glucose_ref_values)
         self.line_carb_reference.set_data(carb_ref_time, carb_ref_values)
-        self.line_insulin.set_data(time_minutes, insulin_values)
+        # insulin already set above
         if smoothed_insulin_time is not None:
             smoothed_insulin_values = smoothed_insulin_values or []
             self.line_insulin_smoothed.set_data(

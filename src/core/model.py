@@ -45,13 +45,14 @@ class PhysiologyModel:
         """Compute continuous-time state derivatives for solve_ivp.
 
         State vector: [glucose, insulin, carb_stomach, carb_intestine,
-                       interstitium]
+                       interstitium, insulin_subcutaneous]
         """
         glucose = float(values[0])
         insulin = float(values[1])
         carb_stomach = float(values[2])
         carb_intestine = float(values[3])
         interstitium = float(values[4])
+        insulin_subcutaneous = float(values[5])
 
         insulin_effect = max(0.0, insulin - config.insulin_basal)
         glucose_effect = max(0.0, glucose - config.glucose_basal)
@@ -73,6 +74,12 @@ class PhysiologyModel:
             + insulin_rate
         )
 
+        # Absorption from subcutaneous depot into plasma insulin
+        absorption_rate = (
+            insulin_subcutaneous / config.insulin_subq_absorption_tau_minutes
+        )
+        d_insulin += absorption_rate
+
         # Two-compartment meal absorption: stomach -> intestine -> glucose
         d_carb_stomach = -(1.0 / config.stomach_tau_minutes) * carb_stomach
         d_carb_intestine = (
@@ -86,6 +93,8 @@ class PhysiologyModel:
             glucose - interstitium
         ) / config.interstitium_tau_minutes
 
+        d_insulin_subcutaneous = -absorption_rate
+
         return np.array(
             [
                 d_glucose,
@@ -93,6 +102,7 @@ class PhysiologyModel:
                 d_carb_stomach,
                 d_carb_intestine,
                 d_interstitium,
+                d_insulin_subcutaneous,
             ],
             dtype=float,
         )
@@ -142,6 +152,7 @@ class PhysiologyModel:
                 state.carb_stomach,
                 state.carb_intestine,
                 state.interstitium,
+                state.insulin_subcutaneous,
             ],
             dtype=float,
         )
@@ -176,6 +187,7 @@ class PhysiologyModel:
             config.min_glucose,
             config.max_glucose,
         )
+        next_insulin_subcutaneous = max(0.0, float(next_values[5]))
 
         next_sport_remaining = max(
             0.0,
@@ -189,10 +201,13 @@ class PhysiologyModel:
             time_minutes=state.time_minutes + dt_minutes,
             glucose=next_glucose,
             insulin=next_insulin,
+            insulin_subcutaneous=next_insulin_subcutaneous,
             carb_stomach=next_carb_stomach,
             carb_intestine=next_carb_intestine,
             interstitium=next_interstitium,
             insulin_rate=state.insulin_rate,
+            insulin_subq_rate=state.insulin_subq_rate,
+            insulin_subq_minutes_remaining=state.insulin_subq_minutes_remaining,
             sport_multiplier=next_sport_multiplier,
             sport_minutes_remaining=next_sport_remaining,
         )

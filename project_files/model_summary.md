@@ -16,9 +16,11 @@ physiological values after each step.
 
 ## 2. Purpose of the Model
 The model is designed to:
-- Reproduce plausible glucose-insulin trends for teaching and analysis
-- Support closed-loop insulin automation with a proportional controller
-- Allow user disturbances (meal and sport) to alter trajectories
+- Reproduce plausible CGM replay trends for validation and analysis
+- Support conservative closed-loop insulin automation with a proportional
+  controller
+- Allow user disturbances (meal and sport) to alter trajectories in a
+  controlled, inspectable way
 - Provide a compact, explainable baseline architecture for extension
 
 ## 3. System Variables
@@ -61,8 +63,9 @@ Slowly changing/constant model parameters (`ModelConfig`):
   `max_insulin`
 
 The current calibration uses a deliberately small meal-to-glucose gain
-so that a single meal produces a moderate rise instead of driving the
-glucose state directly into the safety clamp.
+so that replayed meals produce a moderate rise rather than an aggressive
+physiology claim. This keeps the model usable for conservative what-if
+analysis and validation comparisons.
 
 ### States `x`
 State stores all information needed to predict future behavior:
@@ -215,3 +218,5 @@ $$
   tuned on Phase 1 validation windows. The current defaults are
   `stomach_tau_minutes=18.0`, `intestine_tau_minutes=40.0`, and
   `interstitium_tau_minutes=8.0`.
+- Scenario inputs and bolus actions should be interpreted as model-side
+  replay signals unless separately calibrated to a real dosing unit.
