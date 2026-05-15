@@ -57,20 +57,22 @@ def main(target_path: str = "src") -> int:
     # Step 1: Black (Auto-formatter)
     print("\n" + "=" * 70)
     results["black"] = run_command(
-        ["black", target_path, "--line-length=79"],
+        ["pipenv", "run", "black", target_path, "--line-length=79"],
         "1. AUTO-FORMATTING WITH BLACK",
     )
 
     # Step 2: Pylint (Linter)
     print("\n" + "=" * 70)
     results["pylint"] = run_command(
-        ["pylint", target_path, "--rcfile=.pylintrc"], "2. LINTING WITH PYLINT"
+        ["pipenv", "run", "pylint", target_path, "--rcfile=.pylintrc"],
+        "2. LINTING WITH PYLINT",
     )
 
     # Step 3: mypy (Type checker)
     print("\n" + "=" * 70)
     results["mypy"] = run_command(
-        ["mypy", target_path, "--strict"], "3. TYPE CHECKING WITH MYPY"
+        ["pipenv", "run", "mypy", target_path, "--strict"],
+        "3. TYPE CHECKING WITH MYPY",
     )
 
     # Step 4: Use-case document presence and minimal content check
@@ -107,7 +109,17 @@ def main(target_path: str = "src") -> int:
     print("\n" + "=" * 70)
     if Path("tests").exists():
         results["pytest"] = run_command(
-            ["pytest", "tests/", "-v", "--tb=short"], "4. RUNNING TESTS"
+            [
+                "pipenv",
+                "run",
+                "python",
+                "-m",
+                "pytest",
+                "tests/",
+                "-v",
+                "--tb=short",
+            ],
+            "4. RUNNING TESTS",
         )
     else:
         print("\n[SKIP] No tests directory found (tests/ does not exist)")
