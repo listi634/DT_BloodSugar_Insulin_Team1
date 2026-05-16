@@ -1,130 +1,93 @@
-# Use Cases and High-Level Goals
+# Use Cases and Project Intent — The project's "soul"
 
-Version: 1.1
-Last Updated: 2026-05-14
+Version: 1.2
+Last updated: 2026-05-16
 
-Purpose
--------
-This document captures the canonical, high-level use cases and goals for
-the Digital Twin for Blood Sugar and Insulin project. It is intentionally
-non-prescriptive: implementation details, parameter choices, integration
-strategies, and numerical bounds are left open for research and iteration.
+This document expresses why the project exists, who benefits from it,
+and what a user should expect to gain. It frames the application as an
+engineering and educational tool: an accessible, reproducible surrogate
+for exploring glucose–insulin interactions and conservative control
+behaviour, not a clinical diagnostic system.
 
-Keep this file up-to-date whenever the project scope, user-facing
-workflows, or model assumptions change. Future coding agents and reviewers
-must consult this document before implementing features that affect the
-simulation behavior or user experience.
+Core proposition
+----------------
+The project lets clinicians, researchers and informed users take a CGM
+trace, replay it in a deterministic digital twin, and run short,
+conservative forecasts when an event occurs. The app's value is in
+explainability, repeatability, and safe intuition-building about how
+meals and insulin influence short-term glucose trends.
 
-Primary persona
----------------
-- Diabetes patient, coach, or researcher who already has CGM traces and
-  wants to replay them, validate a lightweight model, and explore
-  conservative what-if scenarios after meals or activity.
+Primary personas
+----------------
+- Diabetes researcher validating model ideas or controller concepts.
+- Educator demonstrating effects of meals/insulin in a classroom.
+- Power user (patient or coach) exploring scenarios for intuition and
+  debugging (not for direct treatment decisions).
 
-High-level goal
----------------
-Provide a realistic, easy-to-run CGM replay tool that (1) aligns with
-measured interstitial glucose time series during GlucoBench validation
-runs, and (2) when an event occurs, can optionally launch a short,
-conservative free-run prediction without ingesting new benchmark data.
+Representative use-cases (concise)
+----------------------------------
+1) Validation & replay: load a GlucoBench window, run the estimator,
+   and compare simulated interstitial glucose to reference CGM. Produce
+   JSONL logs and metric results for reproducibility.
 
-Virtual & physical entities
----------------------------
-- Physical: Human subject with CGM (interstitial glucose) and event
-  logging (meals, optional bolus records). Units: mg/dL (primary) and
-  mmol/L (supported).
-- Virtual: Low-order grey-box compartmental model representing
-  stomach/intestine, glucose, insulin, and interstitium. The model is a
-  replay-and-forecast surrogate, not a clinically validated physiology
-  simulator.
+2) Meal-triggered conservative forecast: when a meal is encountered in
+   a replay, pause and offer a short open-loop prediction overlay so the
+   user can inspect possible near-term trajectories.
 
-Primary use-cases
-------------------
-1. Replay / Validation run
-   - Load recorded CGM time series and associated meal / bolus events.
-   - Run the estimator to infer latent states and compare simulated
-     interstitial glucose against the recorded CGM trace.
-   - Use metrics such as RMSE, MAE, oscillation counts, and hypo-/
-     hyperglycemia detection to judge replay quality.
-   - Write an AI-friendly JSONL replay log with simulated plasma glucose,
-     interstitium, insulin, and the measured benchmark values used in the
-     validation window so the run can be analyzed later.
+3) Standalone what‑if: from any live state, apply a planned meal and an
+   optional bolus, then run a conservative forecast to inspect trend
+   direction and timing (again: not treatment advice).
 
-2. Meal-triggered prediction
-   - When a meal event is reached during replay, pause the simulation and
-     allow the user to continue or launch a short-term prediction.
-   - The prediction runs forward without ingesting further benchmark data
-     and leaves a background overlay for visual comparison.
-   - After the prediction window completes, show a compact summary with
-     RMSE, MARD, and peak-time error against the reference glucose data.
+4) Developer harness: generate reproducible scenarios (CSV/JSONL) for
+   automated tests and controller tuning experiments.
 
-3. Standalone what-if prediction
-   - Let the user run a short open-loop forecast from the current state
-     without requiring a replay meal event.
-   - Accept planned meal carbohydrates and an optional bolus so the user
-     can inspect a conservative future trajectory.
+What the project delivers (results)
+-----------------------------------
+- Deterministic replay aligned to benchmark CGM windows (tunable
+  estimator).
+- Short-horizon forecast overlays and numeric comparison metrics
+  (RMSE, MAE, MARD, peak-time error) for scenario evaluation.
+- Structured artifacts (JSONL logs, CSV summaries, PNGs) to enable
+  offline analysis and continuous integration tests.
 
-4. Conservative what-if analysis
-   - Let the user test small meal or bolus changes and inspect the trend
-     direction rather than interpret the output as a clinical dose
-     recommendation.
-   - Keep the scenario intentionally conservative so the app is useful
-     for intuition building, parameter sensitivity checks, and model
-     debugging.
+Hard limits and explicit non-goals
+---------------------------------
+- This is not a patient‑specific model: personalization is out-of-scope
+  for V1.
+- It is not a medical device and must not be used for dosing
+  recommendations. UI and documentation must present this disclaimer.
+- The model uses simplified insulin and meal kinetics with linear action
+  terms; it will not capture complex physiology such as multi-phase
+  insulin sensitivity changes or meal composition effects.
 
-4. Developer / Offline analysis
-   - Use the model to generate reproducible scenarios for testing,
-     controller tuning, and sensitivity analysis.
+Ethical and privacy considerations
+---------------------------------
+- Mark all outputs as educational only and require an explicit
+  disclaimer in the GUI and README.
+- Treat CGM and event logs as sensitive: the repository contains only
+  anonymized benchmark windows; users must follow institutional policies
+  for personal data.
 
-Data & events
--------------
-- Expected inputs: CGM time series (timestamp, glucose), event rows for
-  meals (timestamp, carbs), and recorded insulin bolus entries when
-  available (timestamp, bolus units).
-- Reference datasets are kept in the `data/` folder and should be used as
-  canonical examples.
-- The benchmark data should be treated as replay/validation material, not
-  as proof that every meal has a large immediate glucose spike.
+Success criteria (how we judge good outcomes)
+--------------------------------------------
+- Reproducible validation: the repository can replay at least one
+  canonical GlucoBench window and produce the same JSONL/CSV summary
+  artifacts across runs.
+- Conservative forecasts provide useful qualitative guidance on trend
+  direction and timing without making overconfident claims.
+- The codebase is approachable: a new developer can run verification,
+  run a replay, and inspect generated logs within 30 minutes.
 
-Acceptance criteria (high-level)
---------------------------------
-- The project must provide replayed GlucoBench runs and meal-triggered
-  prediction overlays and a standalone prediction control via the GUI
-  and CLI.
-- Deterministic loop order must be preserved: apply events → controller →
-  integrate → save history.
-- The simulator must expose a reproducible example scenario (small CSV
-  snippet) that can act as a golden test for future changes.
-- Phase 1 validation should remain reproducible through the generated
-  validation windows and metrics artifacts in `project_files/phase1_results`.
+Future directions (short list)
+-----------------------------
+- Add optional personalization (parameter identification) with clear
+  safety guards.
+- Extend the estimator into a full state-and-parameter filter for
+  research experiments.
+- Add secure storage and anonymized sharing for collaborative
+  validation studies.
 
-Success for the project means the app can explain and replay CGM behavior
-well enough to support comparison, sensitivity analysis, and cautious
-future prediction. It does not need to promise clinical-grade meal
-physiology.
+---
 
-Developer rules
----------------
-- Consult this file before making feature or API changes that affect the
-  simulation's semantics or user-facing flows.
-- When model structure, event formats, or UX flows change, update:
-  - `project_files/model_summary.md`
-  - `project_files/simulation_summary.md`
-  - `project_files/USE_CASES_AND_GOALS.md`
-- Keep the use-case document high-level — avoid hardcoding numerical
-  implementation choices here.
+Owner: project maintainers
 
-Safety & privacy
------------------
-- This project is a research tool and not a medical device. All
-  recommendations are advisory and must carry a clear disclaimer in the
-  UI.
-- Insulin and meal inputs should be framed as scenario inputs for replay
-  and what-if analysis, not as prescriptive treatment advice.
-- Treat CGM traces and timestamps as sensitive data; follow institutional
-  policies for PHI if present.
-
-Change log & ownership
-----------------------
-- Owner: Project maintainers
-- 2026-05-03: Created initial high-level use-case and goals document.

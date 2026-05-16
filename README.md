@@ -1,312 +1,207 @@
-"""Main README for DT_BloodSugar_Insulin_Team1 project.
+# DT_BloodSugar_Insulin_Team1 — Project Manual
 
-This is the Digital Twin for Blood Sugar and Insulin Simulation project
-developed as part of the Digital Twin lecture.
-"""
+This repository contains a compact, explainable digital twin for
+glucose–insulin dynamics used for CGM replay, conservative short-horizon
+prediction, and validation experiments. The codebase is organized for
+developer clarity and verification-first workflows.
 
-# DT_BloodSugar_Insulin_Team1
-
-**Digital Twin for Blood Sugar and Insulin Simulation**
-
----
-
-## Project Overview
-
-This project implements a modular digital twin simulation for blood glucose
-and insulin dynamics. It focuses on CGM replay, validation, and cautious
-what-if prediction around meal and bolus events, and combines a simulation
-core with a responsive GUI for interactive experiments.
-
-**Language**: Python 3.13  
-**Team**: Team 1  
-**Assignment**: SW05 Blutzucker Insulin Simulation
+Supported Python: 3.13
 
 ---
 
-## Quick Start
+## Quick start
 
-### 1. Install Dependencies
+Installation (recommended virtual environment):
+
 ```bash
 pipenv install --dev
+pipenv shell
 ```
 
-### 2. Run Verification (After Code Changes)
-**Windows PowerShell** (Recommended):
-```powershell
-.\scripts\verify.ps1
-```
+Run the GUI application:
 
-**macOS/Linux**:
-```bash
-python scripts/verify.py
-```
-
-### 3. Run Application
 ```bash
 python -m src.main
 ```
 
-### 4. Run Tests
+Run verification (must pass before commits):
+
+PowerShell:
+```powershell
+.\scripts\verify.ps1
+```
+
+POSIX (bash):
 ```bash
-pytest tests/ -v
+python scripts/verify.py
 ```
 
----
+Run tests:
 
-## Project Structure
-
-```
-DT_BloodSugar_Insulin_Team1/
-├── .github/
-│   ├── copilot-instructions.md      ← GitHub Copilot Guidelines (START HERE!)
-│   └── VERIFICATION_SETUP.md        ← Detailed setup & troubleshooting
-├── archive/
-│   └── DigitalTwin.py               ← Legacy implementation (reference)
-├── project_files/
-│   ├── DT_glucose_insulin_tasks.pdf
-│   ├── DT_glucose_insulin_task_summary.md
-│   └── SW05 Blutzucker Insulin Simulation.pdf
-├── scripts/
-│   ├── verify.py                    ← Verification script (Python)
-│   ├── verify.ps1                   ← Verification script (PowerShell)
-│   ├── verify.bat                   ← Verification script (Batch)
-│   └── README.md                    ← Scripts documentation
-├── src/
-│   ├── core/
-│   │   ├── controller.py            ← Automated insulin control logic
-│   │   ├── integrator.py            ← Numeric integration helpers
-│   │   ├── model.py                 ← Glucose-insulin model equations
-│   │   ├── simulator.py             ← Simulation loop and event handling
-│   │   ├── state.py                 ← Simulation state/data containers
-│   │   └── __init__.py
-│   ├── gui/
-│   │   ├── app.py                   ← Main CustomTkinter application
-│   │   ├── control_panel.py         ← User inputs for meal/bolus/actions
-│   │   ├── plot_frame.py            ← Embedded Matplotlib live charts
-│   │   └── __init__.py
-│   ├── main.py                      ← Entry point
-│   └── __init__.py
-├── tests/
-│   ├── __init__.py
-│   ├── README.md                   ← Testing documentation
-│   ├── test_controller.py
-│   ├── test_integrator.py
-│   ├── test_model.py
-│   └── test_simulator.py
-├── .gitignore
-├── .pylintrc                        ← Pylint configuration
-├── pyproject.toml                   ← Black & pytest configuration
-├── mypy.ini                         ← Type checker configuration
-├── Pipfile                          ← Dependency management
-├── README.md                        ← You are here
-```
-
----
-
-## Using GitHub Copilot
-
-**IMPORTANT**: All AI-generated code must be verified before committing.
-
-### Workflow
-
-1. **Accept Copilot suggestion** in your editor
-2. **Run verification**:
-   ```powershell
-   .\scripts\verify.ps1
-   ```
-3. **Fix any issues** reported by the tools
-4. **Commit** only when all checks pass
-
-### Guidelines
-
-See [`.github/copilot-instructions.md`](.github/copilot-instructions.md) for:
-- Code style standards (Google Python Style Guide)
-- Type hints requirements
-- Docstring format
-- Common patterns for this domain
-- Best practices for prompting Copilot
-
-### Verification Tools
-
-The verification script automatically runs:
-- **Black** - Auto-formats code
-- **Pylint** - Lints for style violations
-- **mypy** - Type checking
-- **pytest** - Unit tests
-
----
-
-## Code Style
-
-This project follows the **Google Python Style Guide**.
-
-### Key Requirements
-
-- ✅ **Line length**: Max 79 characters
-- ✅ **Naming**: `snake_case` for functions, `PascalCase` for classes, `UPPER_CASE` for constants
-- ✅ **Type hints**: Required on all function signatures (PEP 484)
-- ✅ **Docstrings**: Google format, required for all public functions
-- ✅ **Imports**: Use full package names, order: stdlib → third-party → local
-- ✅ **Comments**: Explain **why**, not **what**
-- ✅ **Scope**: Frame the simulator as replay/validation-first rather than
-    clinical-grade physiology
-
-### Example
-
-```python
-def calculate_glucose_delta(
-    insulin: float,
-    current_glucose: float
-) -> float:
-    """Calculates glucose change for this time step.
-    
-    Uses simplified pharmacokinetic model.
-    
-    Args:
-        insulin: Current insulin level in mU/L.
-        current_glucose: Current glucose level in mmol/l.
-    
-    Returns:
-        Change in glucose (mmol/l).
-    
-    Raises:
-        ValueError: If insulin or glucose are negative.
-    """
-    if insulin < 0 or current_glucose < 0:
-        raise ValueError("Values must be non-negative")
-    return -(insulin / 100.0) * (current_glucose / 100.0)
-```
-
----
-
-## Verification Checklist
-
-**Before committing ANY code:**
-
-- [ ] Run `.\scripts\verify.ps1` (or equivalent)
-- [ ] All checks show ✅ PASSED
-- [ ] Manually review diff: `git diff`
-- [ ] Docstrings are complete
-- [ ] Type hints are present
-- [ ] Tests pass
-- [ ] No hardcoded values (use constants)
-- [ ] Commit message is descriptive
-
----
-
-## Documentation
-
-- [GitHub Copilot Instructions](.github/copilot-instructions.md) - Guidelines for AI-generated code
-- [Verification Setup](.github/VERIFICATION_SETUP.md) - Detailed tool documentation
-- [Scripts README](scripts/README.md) - Verification scripts guide
-- [Tests README](tests/README.md) - Testing documentation
-- [Use Cases & Goals](project_files/USE_CASES_AND_GOALS.md) - Canonical project use-cases and high-level goals
-- [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) - Official reference
-
----
-
-## Dependencies
-
-### Runtime
-- **numpy** - Numerical computations
-- **matplotlib** - Visualization and UI
-- **customtkinter** - Modern Tkinter-based GUI framework
-- **scipy** - Scientific utilities for numerical workflows
-
-### Development
-- **black** - Code formatter
-- **pylint** - Linter
-- **mypy** - Type checker
-- **pytest** - Testing framework
-- **flake8** - Additional style checking
-- **isort** - Import sorting
-
-### Installation
-```bash
-pipenv install --dev
-```
-
----
-
-## Testing
-
-### Run Tests
 ```bash
 pytest tests/ -v --tb=short
 ```
 
-### Run Specific Test
-```bash
-pytest tests/test_simulator.py::test_reset_restores_initial_state_and_history -v
-```
+---
 
-### With Coverage
-```bash
-pytest tests/ --cov=src --cov-report=html
-# Open htmlcov/index.html
-```
+## What this project contains (concise)
 
-See [tests/README.md](tests/README.md) for detailed testing documentation.
+- Core model & simulation: `src/core/` (model, simulator, controller,
+    integrator, state containers).
+- GUI: `src/gui/` (CustomTkinter app, plot frame, control panel).
+- Tools and verification: `scripts/` (formatting, linting, tests runner).
+- Data: `data/` (benchmark CGM windows used for validation).
+- Documentation: `project_files/` (model & simulation summaries,
+    use-cases, validation artifacts).
 
 ---
 
-## Configuration Files
+## Files and responsibilities
 
-| File | Purpose |
-|------|---------|
-| `.github/copilot-instructions.md` | GitHub Copilot guidelines |
-| `.github/VERIFICATION_SETUP.md` | Tool setup & troubleshooting |
-| `.pylintrc` | Pylint linting rules |
-| `pyproject.toml` | Black formatter & pytest config |
-| `mypy.ini` | Type checker configuration |
-| `Pipfile` | Dependency management |
-| `.gitignore` | Git ignore rules |
+- `src/core/model.py` — compartmental ODE model, unit conversions and
+    safety clamps.
+- `src/core/simulator.py` — deterministic step loop, event application,
+    estimator and controller orchestration.
+- `src/core/controller.py` — conservative proportional controller with
+    deadband and rate limiting.
+- `src/core/integrator.py` — helper wrapper around `scipy.integrate`.
+- `src/core/state.py` — typed containers for SimulationState and
+    SimulationSnapshot.
+- `src/gui/app.py` — application bootstrap and main window.
+- `src/gui/plot_frame.py` — Matplotlib embedding and live history
+    visualization.
+- `src/gui/control_panel.py` — user controls: queue meal, queue bolus,
+    set basal, start/stop.
+- `scripts/verify.py|.ps1|.bat` — run `black`, `pylint`, `mypy`, `pytest`.
+
+See doc files in `project_files/` for model and simulation technical
+descriptions:
+
+- `project_files/model_summary.md` — equations, units, controller,
+    estimator, limits.
+- `project_files/simulation_summary.md` — runtime loop, modes, artifacts.
+- `project_files/USE_CASES_AND_GOALS.md` — high-level intent, personas,
+    limits, and acceptance criteria.
+
+---
+
+## Running common tasks
+
+Start GUI (development):
+```bash
+python -m src.main
+```
+
+Run a single-step simulation from a script (example):
+```python
+from src.core.simulator import GlucoseSimulator
+sim = GlucoseSimulator()
+snapshot = sim.step()
+print(snapshot.time_minutes, snapshot.glucose)
+```
+
+Run validation replay (example CLI flow):
+1. Preload a window from `data/` via the GUI.
+2. Start replay and choose prediction when prompted.
+3. After run, see JSONL and CSV artifacts under
+         `project_files/validation_logs/`.
+
+## Utility scripts (analysis & tuning)
+
+This repository includes a few convenience scripts useful for
+analysis, parameter tuning, and baseline statistics. They are
+developer-oriented and intended to be run from the repository root.
+
+- `scripts/tune_parameters.py` — Grid-search tuning of model and
+    estimator parameters against one or more GlucoBench validation
+    windows. Use this to explore how small changes to
+    `ModelConfig`/`EstimatorConfig` affect replay error and to produce a
+    candidate parameter set for further manual inspection.
+
+    Example usage:
+
+    ```bash
+    # Run default quick sweep over bundled example windows
+    python scripts/tune_parameters.py
+
+    # Tune against a specific window (user U001, 2024-09-01 to 2024-09-09)
+    python scripts/tune_parameters.py --window U001 2024-09-01 2024-09-09
+
+    # Override parameter grid on the command line
+    python scripts/tune_parameters.py --parameter model.glucose_decay=0.01,0.015,0.02
+    ```
+
+    When to use: after you have replay logs or want to calibrate the
+    default behavior on a representative validation window. The script
+    replays the selected windows, computes prediction metrics, and prints
+    the best-scoring candidate. Use results as a starting point —
+    manual inspection and safety checks are recommended before reusing
+    tuned values.
+
+- `scripts/compute_user_stats.py` — Compute per-user baseline
+    statistics (median glucose, percentiles, average meals/insulin) from
+    the bundled GlucoBench CSV. It writes `project_files/user_baselines.csv`.
+
+    Usage:
+
+    ```bash
+    python scripts/compute_user_stats.py
+    ```
+
+    When to use: to generate quick summary baselines for each user in the
+    dataset, for example to seed `glucose_basal` values or to guide
+    profile selection when preloading validation windows.
+
+---
+
+## Verification and contribution workflow
+
+All contributors must run the verification pipeline before committing:
+
+1. Format with Black and isort (automatic in `scripts/verify`).
+2. Lint with `pylint` and fix issues flagged by the project's rules.
+3. Type-check with `mypy` (project uses strict mode).
+4. Run unit tests with `pytest`.
+
+Use the provided scripts to avoid local tooling mismatch:
+
+```powershell
+.\scripts\verify.ps1
+```
+
+---
+
+## Data and privacy
+
+- Benchmark data (GlucoBench windows) live in `data/`. They are used
+    as validation examples only and must be handled according to local
+    privacy rules if replaced with real PHI.
+
+## Extending the project
+
+- To add personalization: implement a parameter-identification module
+    that updates `ModelConfig` and provide clear unit tests and safety
+    checks.
+- To add a new estimator: subclass `ExtendedKalmanFilterEstimator` and
+    keep the same `predict/update` interface used by `GlucoseSimulator`.
 
 ---
 
 ## Troubleshooting
 
-### "Command not found: black"
-```bash
-pipenv install --dev
-```
-
-### "Black cannot format file"
-```bash
-python -m py_compile src/file.py
-```
-
-### "mypy shows too many errors"
-See [VERIFICATION_SETUP.md](.github/VERIFICATION_SETUP.md#mypy-issues)
-
-### "Tests fail after code change"
-1. Review diff: `git diff src/`
-2. Update tests if needed
-3. Run specific test: `pytest tests/test_file.py -v`
+- If `black` is missing: install dev dependencies via `pipenv
+    install --dev`.
+- If `pytest` fails after a change: run the failing test directly to
+    obtain a focused traceback.
 
 ---
 
-## Resources
+## Contact and ownership
 
-- [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
-- [Black Documentation](https://black.readthedocs.io/)
-- [Pylint Guide](https://pylint.readthedocs.io/)
-- [mypy Handbook](https://mypy.readthedocs.io/)
-- [pytest Documentation](https://docs.pytest.org/)
-- [PEP 8](https://pep8.org/)
-- [PEP 484 (Type Hints)](https://www.python.org/dev/peps/pep-0484/)
+Owner: project maintainers (see repo contributors). Use issues and PRs
+for changes; include verification output in PR descriptions.
 
 ---
 
-## Getting Help
+Last updated: 2026-05-16
 
-1. Check [`.github/copilot-instructions.md`](.github/copilot-instructions.md) for guidelines
-2. See [`.github/VERIFICATION_SETUP.md`](.github/VERIFICATION_SETUP.md) for tool details
-3. Review [task summary](project_files/DT_glucose_insulin_task_summary.md)
-4. Check git log for similar changes: `git log --oneline`
-
----
-
-**Created**: April 16, 2026  
-**Project**: DT_BloodSugar_Insulin_Team1  
-**Python**: 3.13

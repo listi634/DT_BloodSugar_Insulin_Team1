@@ -1,280 +1,136 @@
 # Digital Twin Simulation Summary
 
-## 1. Purpose of the Simulation Model
-The simulation coordinates user disturbances, measurement assimilation,
-control decisions, and physiology prediction in a deterministic step
-loop. It provides a reproducible runtime for studying glucose-insulin
-behavior and control responses under meal events and validation replay
-windows.
+## 1. Purpose
 
-Primary goals:
-- Execute a deterministic update pipeline every step
-- Reproduce recorded CGM traces during replay and validation runs
-- Provide live state/history for visualization
-- Support conservative interactive what-if scenarios through GUI controls
+The simulator provides a deterministic runtime that coordinates user
+events, estimator corrections, control computation, and physiology
+integration. Its primary role is to power the GUI-driven validation and
+what‑if workflows: replay benchmark CGM windows, run conservative short
+horizon forecasts, and produce reproducible artifacts for offline
+analysis.
 
-## 2. Expected Results and Use of Results
-Expected outputs:
-- Time traces of glucose, insulin, and insulin infusion rate
-- Basal-rate traces and subcutaneous insulin depot values
-- Observable response to meals or bolus inputs when replayed or
-  simulated conservatively
-- Automated controller compensation after disturbances
-- Validation replay traces that overlay measured CGM data and report
-  RMSE, MAE, and oscillation counts
-- Moderate scenario responses that stay interpretable and do not rely on
-  aggressive physiological assumptions
+Goals:
+- Run replay and prediction scenarios deterministically.
+- Provide history and diagnostics for visualization and validation.
+- Keep safety and conservatism at the controller boundary.
 
-Typical use:
-- Demonstration of closed-loop behavior
-- Parameter tuning and qualitative sensitivity exploration
-- Regression testing of control and model behavior
+## 2. High-level behaviour and outputs
 
-## 3. Exactness
-- Numerical exactness: governed by `solve_ivp` method/tolerances from
-  `IntegratorConfig`
-- Model exactness: low-order approximation; suitable for replay,
-  validation, and engineering iteration, not medical diagnosis
-- Determinism: high, given same initial conditions, events, and
-  configuration
+Typical outputs available each step or via history access:
+- Time series: plasma glucose, interstitial glucose, plasma insulin,
+  insulin infusion command, basal-rate trace, subcutaneous depot.
+- Validation artifacts: JSONL replay logs, CSV summaries, PNG plots.
+- Metrics: RMSE, MAE, MARD, peak-time error and simple oscillation
+  counts for replay/prediction comparison.
 
-## 4. Time Requirements
-- Current mode: near real-time stepping (GUI schedules repeated calls)
-- Supports conceptual fast-forward by invoking multiple steps quickly
-- Slow-motion is possible by increasing UI update interval externally
-- Not implemented yet: explicit replay clock control or variable-rate
-  scheduler API
+Typical uses:
+- Validation against GlucoBench windows.
+- Rapid controller sensitivity exploration.
+- Developer regression testing and reproducible scenario generation.
 
-## 5. Interactions with Other Entities
-Current interactions:
-- Humans: GUI user preloads GlucoBench windows and controls run/pause
-  and reset. Meal decisions are made via a modal prompt when meal events
-  arrive.
-- Validation users: GUI can preload GlucoBench windows (user/start/end)
-  and replay carbohydrate events plus glucose measurements from dataset
-  timestamps. The validation workflow also writes a CSV summary and PNG
-  plots for each selected window.
-  The GUI now also writes a JSONL replay log per window under
-  `project_files/phase1_results/validation_logs/` containing simulated
-  plasma glucose, interstitium, insulin, basal rate, subcutaneous depot,
-  and the matched measured CGM and event values for later analysis.
-- Machines/Libraries: SciPy ODE solver (`solve_ivp`), plotting/UI stack,
-  EKF-based estimator scaffold
-- Databases/Sensors/Protocols: not connected in V1
+## 3. Deterministic step loop (engine)
 
-## 6. Model Interfaces
+The simulator executes a fixed logical step each tick (`dt_minutes`):
 
-### Internal interfaces (sub-model integration)
-- `GlucoseSimulator` -> `ExtendedKalmanFilterEstimator`:
-  `predict_with_details(dt_minutes, control_input)` and
-  `update(measured_interstitium)` for interstitial glucose correction.
-- `GlucoseSimulator` -> `ProportionalController`:
-  `compute_insulin_rate(glucose, current_rate, config)` — **Note**: The
-  `glucose` parameter receives the corrected interstitial estimate, not
-  plasma glucose.
-- `ExtendedKalmanFilterEstimator` -> `PhysiologyModel`:
-  `integrate(state, model_config)` for process-model propagation.
-- `PhysiologyModel` -> `SolveIvPIntegrator`:
-  `integrate_step(derivative, y0, t0, dt, config)`
+1. Apply pending user events (meals, boluses, basal samples).
+2. EKF predict step (process propagation) using previous control.
+3. EKF update step (ingest measurement when in replay mode).
+4. Compute controller output using corrected interstitial estimate.
+5. Integrate physiology forward (call `solve_ivp` over step interval).
+6. Store snapshot in history and optional replay log.
 
-### External interfaces
-- GUI to simulation commands:
-  - Queue meal: `queue_meal(carbs)` (from replayed benchmark events)
-  - Set basal rate: `set_basal_rate(units_per_hour)` (from replayed
-    benchmark events)
-  - Runtime controls: step/reset, standalone prediction, and loop
-    start/stop in GUI layer
-  - Meal decision prompt:
-    - Continue simulation immediately or launch a prediction overlay
-  - What-if prediction:
-    - Run an open-loop forecast from the current state with planned meal
-      and bolus inputs
-    - Display a post-run summary under the plot with RMSE, MARD, and
-      peak-time error for the evaluated prediction window
-  - Validation preload controls:
-    - Select user and inclusive start/end timestamp window
-    - Preload actual glucose and carbohydrate references
-    - Run replay through the same non-blocking Tk loop
-- History output for plotting:
-  `get_history_arrays()`
+This deterministic order simplifies reproducibility and testing.
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant GUI
-    participant Sim as GlucoseSimulator
-    participant Ctrl as ProportionalController
-    participant Model as PhysiologyModel
-    participant Int as SolveIvPIntegrator
+  participant GUI
+  participant Sim as GlucoseSimulator
+  participant Est as EKF
+  participant Ctrl as Controller
+  participant Model as PhysiologyModel
 
-    User->>GUI: Preload validation window
-    GUI->>Sim: queue_meal (from replay)
-    User->>GUI: Choose continue or prediction when meal arrives
-    GUI->>Sim: step()
-    Sim->>Sim: apply_pending_events()
-    Sim->>Ctrl: compute_insulin_rate(interstitium, ...)
-    Ctrl-->>Sim: insulin_rate
-    Sim->>Model: integrate(state, config)
-    Model->>Int: integrate_step(...)
-    Int-->>Model: next continuous state
-    Model-->>Sim: next SimulationState
-    Sim-->>GUI: SimulationSnapshot + history
+  GUI->>Sim: step()
+  Sim->>Sim: apply_pending_events()
+  Sim->>Est: predict(dt, u_previous)
+  Est->>Est: (internal) state prediction
+  Sim->>Est: optionally update(measured_G_int)
+  Est-->>Sim: corrected hat G_int
+  Sim->>Ctrl: compute_insulin_rate(hat G_int)
+  Ctrl-->>Sim: u_I
+  Sim->>Model: integrate(state, u_I, dt)
+  Model-->>Sim: next_state
+  Sim-->>GUI: snapshot + history
 ```
 
-## 7. Simulation Parameters and Controls
+## 4. Modes: Replay vs Prediction
 
-### Configurable parameters
-- Model dynamics and safety bounds (`ModelConfig`)
-- Controller tuning and safety (`ControllerConfig`)
-- Solver behavior (`IntegratorConfig`)
-- Initial state (`SimulationState`)
+- Replay / Inference: measurement ingestion enabled; estimator
+  corrections are applied so that simulated interstitial glucose aligns
+  with recorded CGM for validation. Controller may be disabled for pure
+  inference runs. Replay mode produces comparison metrics against the
+  benchmark.
+- Prediction / What‑If: open-loop forecast where the simulator does not
+  ingest further benchmark measurements. Planned meals/boluses are
+  applied before integration and the run returns a conservative forecast
+  overlay.
 
-### Runtime controls (implemented)
-- Start: handled by GUI scheduling loop
-- Stop/Pause: handled by GUI stop of scheduling loop
-- Step: `GlucoseSimulator.step()`
-- Reset to initial conditions: `GlucoseSimulator.reset()`
-- Speed slider: adjusts GUI tick rate (steps/sec); max speed is 1 ms/step
-- Validation mode:
-  - Seeds initial simulated glucose from first selected actual value
-  - Replays carbohydrate events as queued meal events
-  - Replays recorded insulin bolus events as queued bolus events
-  - Replays recorded basal-rate samples as persistent pump input
-  - Feeds the window glucose series into the estimator as a measurement
-    reference
-  - Auto-stops at selected end timestamp span
-  - Pauses when a meal arrives to allow continue vs. prediction
-  - Prediction runs ahead without ingesting new benchmark data and
-    leaves a background overlay on the plot
-  - Writes a structured JSONL replay log for the full validation run so
-    simulated and measured values can be reloaded later without rerunning
-    the GUI session
+## 5. Interfaces (internal & external)
 
-### Automatic user profile detection
+Internal (typical method signatures):
+- `GlucoseSimulator.step(use_controller: bool = True) -> SimulationSnapshot`
+- `ExtendedKalmanFilterEstimator.predict_with_details(dt_minutes, control_input)`
+- `ProportionalController.compute_insulin_rate(glucose_estimate, current_rate)`
+- `PhysiologyModel.integrate(state, model_config, dt_minutes)`
 
-When a validation window is preloaded the GUI will detect a simple
-user profile from the recorded basal and bolus signals and display the
-result in the validation card. The detection rules and parameter
-mapping are documented in `project_files/model_summary.md`. The GUI
-uses a colored hint and textual label to indicate the detected
-condition so users can immediately see whether the window corresponds
-to a pump user, an MDI/syringe user, or a healthy subject.
+External (GUI / scripts):
+- `queue_meal(carbs: float)` — schedule a meal event.
+- `queue_bolus(units: float)` — schedule a bolus into subcutaneous depot.
+- `set_basal_rate(units_per_hour: float)` — set persistent basal.
+- `get_history_arrays()` — retrieve recorded arrays for plotting.
 
-### Not implemented in V1
-- Save/load simulation snapshots
-- Replay/rewind timeline controls
+## 6. Validation artifacts and metrics
 
-The validation replay path treats benchmark glucose values as
-measurement inputs for the estimator and overlays the same reference in
-the plot. It does not overwrite the simulated glucose state directly.
-Recorded insulin boluses are converted into the subcutaneous depot,
-while basal samples are converted from U/h to the simulator's internal
-per-minute concentration rate before the next step is integrated.
+Validation runs generate:
+- JSONL replay logs (timestamped snapshots with inputs/outputs).
+- CSV summary with RMSE/MAE/MARD and event-aligned peak-time error.
+- PNG diagnostic plots for visual inspection.
 
-The prediction path is intentionally conservative: it is meant to show a
-short horizon trend after an event, not to claim that the simulator can
-reconstruct full meal physiology.
+Metrics computed against reference CGM series include:
+- RMSE: $\sqrt{\frac{1}{N}\sum (\hat G_{int} - G_{ref})^2}$
+- MAE: $\frac{1}{N}\sum |\hat G_{int} - G_{ref}|$
+- MARD: mean absolute relative deviation (percent)
 
-## 8. Simulation Engine
-Engine characteristics:
-- Deterministic step order:
-  1. Apply pending user events
-  2. Propagate the EKF prediction using the previous control input
-  3. Correct the estimate with the current measurement reference
-  4. Compute controller insulin rate from the corrected estimate
-  5. Store the corrected estimate in history
-- Validation orchestration keeps the same deterministic order by queuing
-  due carbs and due measurements before each `step()` call in the GUI
-  loop.
-- Solver: `scipy.integrate.solve_ivp` (RK45/DOP853/BDF supported)
-- Time step: fixed logical step width `dt_minutes` per simulator step
-- Zero-crossing/event functions: possible via `IntegratorConfig.events`,
-  currently optional and typically unused
+## 7. Configurables and runtime controls
 
-State and output vectors (conceptual form):
+Configs:
+- `ModelConfig`: dynamics, safety clamps, unit mappings.
+- `ControllerConfig`: $K_p$, deadband, bounds, rate limiter.
+- `IntegratorConfig`: solver selection and tolerances.
+- `SimulationState`: initial conditions and runtime flags.
 
-$$
-\mathbf{x}_k =
-\begin{bmatrix}
-G_k \\
-I_k \\
- C_{\mathrm{stomach},k} \\
- C_{\mathrm{intestine},k} \\
-G_{\mathrm{int},k}
-\end{bmatrix},
-\qquad
-\mathbf{y}_k =
-\begin{bmatrix}
-t_k \\
-G_k \\
-I_k \\
-G_{\mathrm{int},k} \\
-u_{I,k}
-\end{bmatrix}
-$$
+Runtime controls exposed in the GUI and usable from scripts:
+- Start / Stop (non-blocking GUI scheduling loop).
+- Step / Reset.
+- Speed slider (adjusts GUI tick rate; supports accelerated stepping).
+- Validation mode toggles (seed initial value, ingest measurements).
 
-```mermaid
-flowchart TD
-  A[Simulation Step] --> B[Apply Pending Events]
-  B --> C[EKF Predict]
-  C --> D[EKF Update]
-  D --> E[Compute Insulin Rate]
-  E --> F[Append Snapshot to History]
-```
+## 8. Practical constraints and implementation notes
 
-## 9. Record / Replay / Rewind
-- Record: implemented via accumulated `SimulationSnapshot` history
-- Replay: not implemented as a dedicated playback subsystem
-- Rewind: not implemented; nearest equivalent is full `reset()`
+- Event timing is quantized to the simulator step width; intra-step
+  timing is not modelled.
+- The prediction path ignores incoming benchmark measurements by
+  design — predictions are intentionally conservative open-loop runs.
+- Real-time behaviour depends on host performance and GUI scheduling.
+- JSONL replay logs capture sufficient metadata to reproduce a run
+  offline (mode, bolus assumptions, estimator tuning).
 
-## 10. Practical Constraints
-- Event buffering is step-based; intra-step event timing is not modeled
-- Benchmark meals during prediction are ignored by the simulation
-- Real-time guarantees depend on GUI scheduling and host performance
-- Bolus inputs should be interpreted as replayed scenario signals unless
-  the user has explicitly calibrated them to the model's internal units
+## 9. Extensibility and testing
 
-## 11. Replay vs Prediction (Inference / What‑If)
+- The deterministic step order is intentionally simple to facilitate
+  unit testing and reproducible validation artifacts.
+- To add more complex event timing, extend the event subsystem to
+  support sub-step interpolation and continuous event application.
 
-The simulator supports two complementary workflows that are important
-for validation and for prospective what‑if forecasting:
+---
 
-- Replay / Inference: controller actions are disabled and the EKF is
-  used to infer latent insulin dynamics from measured interstitial
-  glucose. This mode is intended for post-hoc reconstruction of
-  insulin with documented estimator tuning.
-- Prediction / What‑If: used when simulating a future scenario (for
-  example after a queued meal). Predictions run open‑loop: they accept
-  an explicit bolus event (recorded or calculated) applied before the
-  model propagation and do not ingest further benchmark measurements.
-
-Validation note:
-- Phase 1 validation currently uses tuned meal absorption defaults
-  (`stomach_tau_minutes=18.0`, `intestine_tau_minutes=40.0`) and a
-  faster interstitial time constant (`interstitium_tau_minutes=8.0`).
-  These settings improved the replay metrics compared with the original
-  baseline.
-
-Implementation notes:
-
-- `GlucoseSimulator.step()` may be called with `use_controller=False`
-  to run replay/inference.
-- The GUI now routes forecast requests through a reusable open-loop
-  prediction service that snapshots the live simulator state, runs the
-  scenario forward, and restores the live state afterward.
-- Prediction results now include a compact summary overlay under the
-  plot with RMSE, MARD, and peak-time error once a validation window
-  prediction finishes.
-- A discrete `queue_bolus()` event is available to model an
-  administrated insulin bolus for prediction runs; boluses are applied
-  to the subcutaneous depot before EKF prediction so the estimator and
-  model see the input.
-- `set_basal_rate()` stores the active converted basal input so it can
-  persist across steps until the next replay sample arrives.
-- All prediction/replay runs should include snapshot metadata (mode,
-  bolus assumptions, estimator tuning) for reproducibility, and
-  validation predictions are appended to the same JSONL replay log with
-  inputs, outputs, and optional error metrics.
-
-Update requirement: keep this section aligned with the `Simulator` and
-`Estimator` docstrings when further refactors are made.
+Last updated: 2026-05-16
