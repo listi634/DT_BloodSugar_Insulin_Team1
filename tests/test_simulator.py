@@ -28,8 +28,6 @@ def _build_simulator() -> GlucoseSimulator:
         carb_intestine=0.0,
         interstitium=model_config.glucose_basal,
         insulin_rate=0.0,
-        sport_multiplier=1.0,
-        sport_minutes_remaining=0.0,
     )
     estimator = ExtendedKalmanFilterEstimator(
         model=PhysiologyModel(),
@@ -64,17 +62,6 @@ def test_event_then_control_then_integrate_order() -> None:
     assert final.carb_stomach + final.carb_intestine > 0.0
 
 
-def test_sport_event_applies_temporary_sensitivity_boost() -> None:
-    """Sport event should set multiplier and count down each step."""
-    simulator = _build_simulator()
-    simulator.queue_sport(multiplier=1.5, duration_minutes=30.0)
-
-    snapshot = simulator.step(measured_interstitium=5.0)
-
-    assert snapshot.sport_multiplier == 1.5
-    assert snapshot.sport_minutes_remaining == 29.0
-
-
 def test_reset_restores_initial_state_and_history() -> None:
     """Reset should clear progress while preserving initial snapshot."""
     simulator = _build_simulator()
@@ -102,8 +89,6 @@ def test_simulator_accepts_explicit_integrator_config() -> None:
         carb_intestine=0.0,
         interstitium=model_config.glucose_basal,
         insulin_rate=0.0,
-        sport_multiplier=1.0,
-        sport_minutes_remaining=0.0,
     )
     simulator = GlucoseSimulator(
         model=PhysiologyModel(),
@@ -136,8 +121,6 @@ def test_controller_reads_interstitium_not_plasma_glucose() -> None:
         carb_intestine=0.0,
         interstitium=5.5,
         insulin_rate=0.0,
-        sport_multiplier=1.0,
-        sport_minutes_remaining=0.0,
     )
     simulator = GlucoseSimulator(
         model=PhysiologyModel(),

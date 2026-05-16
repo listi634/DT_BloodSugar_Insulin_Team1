@@ -56,8 +56,6 @@ def build_simulator(
         insulin_rate=0.0,
         insulin_subq_rate=0.0,
         insulin_subq_minutes_remaining=0.0,
-        sport_multiplier=1.0,
-        sport_minutes_remaining=0.0,
     )
 
     return GlucoseSimulator(

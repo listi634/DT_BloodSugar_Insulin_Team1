@@ -35,7 +35,7 @@ Die Umsetzung erfolgt wahlweise in:
 * **Python:** Nutzung von Bibliotheken zur Simulation von Differentialgleichungen und Graphen für Zeitreihen (z. B. PyCharm oder Jupyter Notebooks).
 
 ## 5. Projektaufgaben (Meilensteine)
-1.  **Konzept & Brainstorming:** Reflexion über Nutzen und Motivation für Anwender (Diabetiker, Sportler).
+1.  **Konzept & Brainstorming:** Reflexion über Nutzen und Motivation für Anwender (Diabetiker).
 2.  **Modell-Spezifikation:** Erstellung eines Textes und eines Blockdiagramms des Glukose-Insulin-Systems (basierend auf dem Referenzmodell: Gastrointestinaltrakt, Leber, Muskel-/Fettgewebe).
 3.  **Mathematisches Modell:** Aufbau der ODEs zur Beschreibung der Dynamik.
 4.  **Simulation & Validierung:** Bestätigung des Verhaltens durch Simulation der Zeitverläufe.

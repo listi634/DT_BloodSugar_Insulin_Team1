@@ -82,9 +82,15 @@ Current interactions:
   - Queue meal: `queue_meal(carbs)` (from replayed benchmark events)
   - Set basal rate: `set_basal_rate(units_per_hour)` (from replayed
     benchmark events)
-  - Runtime controls: step/reset (and loop start/stop in GUI layer)
+  - Runtime controls: step/reset, standalone prediction, and loop
+    start/stop in GUI layer
   - Meal decision prompt:
     - Continue simulation immediately or launch a prediction overlay
+  - What-if prediction:
+    - Run an open-loop forecast from the current state with planned meal
+      and bolus inputs
+    - Display a post-run summary under the plot with RMSE, MARD, and
+      peak-time error for the evaluated prediction window
   - Validation preload controls:
     - Select user and inclusive start/end timestamp window
     - Preload actual glucose and carbohydrate references
@@ -236,9 +242,7 @@ for validation and for prospective what‑if forecasting:
 - Replay / Inference: controller actions are disabled and the EKF is
   used to infer latent insulin dynamics from measured interstitial
   glucose. This mode is intended for post-hoc reconstruction of
-  insulin with documented estimator tuning and optional offline
-  smoothing. The GUI overlays the RTS smoothed insulin trace after
-  replay completion.
+  insulin with documented estimator tuning.
 - Prediction / What‑If: used when simulating a future scenario (for
   example after a queued meal). Predictions run open‑loop: they accept
   an explicit bolus event (recorded or calculated) applied before the
@@ -255,6 +259,12 @@ Implementation notes:
 
 - `GlucoseSimulator.step()` may be called with `use_controller=False`
   to run replay/inference.
+- The GUI now routes forecast requests through a reusable open-loop
+  prediction service that snapshots the live simulator state, runs the
+  scenario forward, and restores the live state afterward.
+- Prediction results now include a compact summary overlay under the
+  plot with RMSE, MARD, and peak-time error once a validation window
+  prediction finishes.
 - A discrete `queue_bolus()` event is available to model an
   administrated insulin bolus for prediction runs; boluses are applied
   to the subcutaneous depot before EKF prediction so the estimator and
@@ -262,7 +272,9 @@ Implementation notes:
 - `set_basal_rate()` stores the active converted basal input so it can
   persist across steps until the next replay sample arrives.
 - All prediction/replay runs should include snapshot metadata (mode,
-  bolus assumptions, estimator tuning) for reproducibility.
+  bolus assumptions, estimator tuning) for reproducibility, and
+  validation predictions are appended to the same JSONL replay log with
+  inputs, outputs, and optional error metrics.
 
 Update requirement: keep this section aligned with the `Simulator` and
 `Estimator` docstrings when further refactors are made.

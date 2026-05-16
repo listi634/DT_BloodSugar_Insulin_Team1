@@ -136,18 +136,8 @@ class PhysiologyModel:
             raise ValueError("state.insulin_rate must be non-negative")
         if state.basal_insulin_rate < 0.0:
             raise ValueError("state.basal_insulin_rate must be non-negative")
-        if state.sport_multiplier < 1.0:
-            raise ValueError("state.sport_multiplier must be at least 1.0")
-        if state.sport_minutes_remaining < 0.0:
-            raise ValueError(
-                "state.sport_minutes_remaining must be non-negative"
-            )
 
         dt_minutes = config.dt_minutes
-
-        sensitivity_multiplier = 1.0
-        if state.sport_minutes_remaining > 0.0:
-            sensitivity_multiplier = state.sport_multiplier
 
         initial_values = np.array(
             [
@@ -166,7 +156,7 @@ class PhysiologyModel:
                 time_minutes,
                 values,
                 config,
-                sensitivity_multiplier,
+                1.0,
                 total_insulin_rate,
             ),
             y0=initial_values,
@@ -194,14 +184,6 @@ class PhysiologyModel:
         )
         next_insulin_subcutaneous = max(0.0, float(next_values[5]))
 
-        next_sport_remaining = max(
-            0.0,
-            state.sport_minutes_remaining - dt_minutes,
-        )
-        next_sport_multiplier = state.sport_multiplier
-        if not next_sport_remaining:
-            next_sport_multiplier = 1.0
-
         return SimulationState(
             time_minutes=state.time_minutes + dt_minutes,
             glucose=next_glucose,
@@ -212,8 +194,8 @@ class PhysiologyModel:
             interstitium=next_interstitium,
             insulin_rate=state.insulin_rate,
             insulin_subq_rate=state.insulin_subq_rate,
-            insulin_subq_minutes_remaining=state.insulin_subq_minutes_remaining,
+            insulin_subq_minutes_remaining=(
+                state.insulin_subq_minutes_remaining
+            ),
             basal_insulin_rate=state.basal_insulin_rate,
-            sport_multiplier=next_sport_multiplier,
-            sport_minutes_remaining=next_sport_remaining,
         )

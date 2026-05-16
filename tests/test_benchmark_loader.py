@@ -25,7 +25,7 @@ def test_loader_validates_required_columns(tmp_path: Path) -> None:
 
 
 def test_get_user_ids_and_days_sorted(tmp_path: Path) -> None:
-    """Users and distinct days should be returned in ascending order."""
+    """Users should be returned in dataset order and days ascending."""
     csv_path = tmp_path / "sample.csv"
     _write_csv(
         csv_path,
@@ -42,7 +42,7 @@ def test_get_user_ids_and_days_sorted(tmp_path: Path) -> None:
 
     loader = GlucoBenchLoader(csv_path)
 
-    assert loader.get_user_ids() == ["U001", "U002"]
+    assert loader.get_user_ids() == ["U002", "U001"]
     assert loader.get_user_days("U001") == ["2024-01-01", "2024-01-02"]
 
 

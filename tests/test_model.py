@@ -20,8 +20,6 @@ def test_meal_carb_pool_increases_glucose() -> None:
         carb_intestine=80.0,
         interstitium=config.glucose_basal,
         insulin_rate=0.0,
-        sport_multiplier=1.0,
-        sport_minutes_remaining=0.0,
     )
 
     next_state = model.integrate(state, config)
@@ -42,8 +40,6 @@ def test_high_glucose_triggers_endogenous_insulin_response() -> None:
         carb_intestine=0.0,
         interstitium=9.0,
         insulin_rate=0.0,
-        sport_multiplier=1.0,
-        sport_minutes_remaining=0.0,
     )
 
     next_state = model.integrate(state, config)
@@ -63,8 +59,6 @@ def test_state_values_are_clamped_to_safety_bounds() -> None:
         carb_intestine=0.0,
         interstitium=12.0,
         insulin_rate=10.0,
-        sport_multiplier=1.5,
-        sport_minutes_remaining=10.0,
     )
 
     next_state = model.integrate(state, config)
@@ -94,8 +88,6 @@ def test_integrator_events_are_forwarded_to_solver() -> None:
         carb_intestine=10.0,
         interstitium=config.glucose_basal,
         insulin_rate=0.0,
-        sport_multiplier=1.0,
-        sport_minutes_remaining=0.0,
     )
 
     model.integrate(state, config)

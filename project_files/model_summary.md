@@ -20,7 +20,7 @@ The model is designed to:
 - Reproduce plausible CGM replay trends for validation and analysis
 - Support conservative closed-loop insulin automation with a proportional
   controller
-- Allow user disturbances (meal and sport) to alter trajectories in a
+- Allow user disturbances (meal and bolus) to alter trajectories in a
   controlled, inspectable way
 - Provide a compact, explainable baseline architecture for extension
 
@@ -39,8 +39,6 @@ Control and known external inputs that influence dynamics:
 - `insulin_rate` (controller output, infused insulin rate)
 - `basal_insulin_rate` (persistent pump basal input)
 - `meal_carbs` (queued by user and injected into `carb_pool`)
-- `sport_multiplier`, `sport_minutes_remaining` (temporary sensitivity
-  modulation from user sport events)
 
 ### Outputs `y`
 Measurable or exposed outputs:
@@ -49,7 +47,7 @@ Measurable or exposed outputs:
 - `interstitium` (interstitial glucose, the control signal)
 - `insulin_rate`
 - `time_minutes`
-- Optional: `carb_pool`, sport-related values for diagnostics
+- Optional: `carb_pool` for diagnostics
 
 ### Parameters `p`
 Slowly changing/constant model parameters (`ModelConfig`):
@@ -87,8 +85,6 @@ $$
 
 Simulation metadata that also affects future behavior:
 - `time_minutes`
-- `sport_multiplier`
-- `sport_minutes_remaining`
 - `insulin_rate` (held over each step until recomputed)
 - `basal_insulin_rate` (persistent converted basal input)
 - `insulin_subcutaneous` (subcutaneous insulin depot)
@@ -96,11 +92,10 @@ Simulation metadata that also affects future behavior:
 ### Disturbances `w`
 Uncontrolled or partially controlled effects:
 - Meal ingestion timing and amount (user-triggered disturbance)
-- Physical activity events (user-triggered sensitivity disturbance)
 - Numerical integration error and model mismatch vs. reality
 
 ## 4. What Is Influenced, Measured, and Assumed Constant
-- Influenced directly: insulin infusion rate, meal/sport event injection
+- Influenced directly: insulin infusion rate, meal and bolus event injection
 - Measured/exposed: glucose and insulin trajectories plus the
   interstitial estimate used by the controller
 - Treated as constant/slowly varying: model parameters in
@@ -111,7 +106,7 @@ Uncontrolled or partially controlled effects:
 - Core dynamics: continuous-time ODEs
 - Execution style: sampled-data hybrid loop
   - Continuous physiology integrated over each discrete step `dt_minutes`
-  - Discrete events (meal/sport) and control updates at step boundaries
+  - Discrete events (meal and bolus) and control updates at step boundaries
 
 ## 6. Subsystems (Implemented Decomposition)
 - Physiology subsystem (`PhysiologyModel`): ODE derivatives and bounded
@@ -121,14 +116,14 @@ Uncontrolled or partially controlled effects:
 - Estimation subsystem (`ExtendedKalmanFilterEstimator`): finite-
   difference EKF scaffold that corrects interstitial glucose before the
   controller sees it
-- Event subsystem (`PendingEvents`): meal/sport buffering and
-  deterministic application
+- Event subsystem (`PendingEvents`): meal buffering, bolus handling,
+  and deterministic application
 - Integration subsystem (`SolveIvPIntegrator`): one-step numerical solve
   with validated solver config
 
 ```mermaid
 flowchart LR
-    U[User Events: Meal / Sport] --> E[Pending Event Application]
+    U[User Events: Meal / Bolus] --> E[Pending Event Application]
     E --> C[Proportional Controller]
     C --> M[Physiology ODE Model]
     M --> I[solve_ivp Integrator]
@@ -146,15 +141,14 @@ I_{\mathrm{subq}} &:= \text{subcutaneous insulin depot}, \\
 C &:= \text{carbohydrate pool}, \\
 G_{\mathrm{int}} &:= \text{interstitial glucose (CGM signal)}, \\
 u_I &:= \text{commanded insulin rate}, \\
-u_{\mathrm{basal}} &:= \text{basal insulin rate}, \\
-s &:= \text{effective sport sensitivity multiplier},\; s \ge 1
+u_{\mathrm{basal}} &:= \text{basal insulin rate}
 \end{aligned}
 $$
 
 Continuous-time dynamics:
 
 $$
-\frac{dG}{dt} = -k_g\,(G-G_b) - (S_I\,s)\,\max(0, I-I_b) + k_c\,C
+\frac{dG}{dt} = -k_g\,(G-G_b) - S_I\,\max(0, I-I_b) + k_c\,C
 $$
 
 $$
@@ -214,19 +208,6 @@ G \leftarrow \operatorname{clamp}(G, G_{\min}, G_{\max}),
 I \leftarrow \operatorname{clamp}(I, I_{\min}, I_{\max}),
 \qquad
 C \leftarrow \max(0, C)
-$$
-
-Sport effect decay at step level:
-
-$$
-t_{\mathrm{sport}} \leftarrow
-\max\bigl(0,\, t_{\mathrm{sport}}-\Delta t\bigr)
-$$
-
-If the remaining sport time reaches zero:
-
-$$
-s \leftarrow 1.0
 $$
 
 ## 8. Notes and Limitations

@@ -69,14 +69,12 @@ class GlucoBenchLoader:
             raise ValueError("Benchmark dataset is empty")
 
         self._rows_by_user: dict[str, list[BenchmarkRow]] = defaultdict(list)
-        for row in sorted(
-            rows, key=lambda item: (item.user_id, item.timestamp)
-        ):
+        for row in rows:
             self._rows_by_user[row.user_id].append(row)
 
     def get_user_ids(self) -> list[str]:
-        """Return all available user identifiers in ascending order."""
-        return sorted(self._rows_by_user.keys())
+        """Return all available user identifiers in dataset order."""
+        return list(self._rows_by_user.keys())
 
     def get_user_days(self, user_id: str) -> list[str]:
         """Return distinct days for one user in ascending order.
@@ -491,149 +489,3 @@ class GlucoBenchLoader:
             writer.writeheader()
             for user_id in sorted(stats.keys()):
                 writer.writerow(stats[user_id])
-
-    def get_best_validation_windows(
-        self, num_users: int = 2, num_windows_per_user: int = 2
-    ) -> list[tuple[str, str, str]]:
-        """Find best validation windows (user, start_day, end_day).
-
-        Selects windows with:
-        - Continuous data (no large gaps)
-        - Multiple meals (≥3)
-        - Multiple bolus events (≥2)
-
-        Args:
-            num_users: Number of users to select.
-            num_windows_per_user: Number of windows per user to find.
-
-        Returns:
-            List of tuples (user_id, start_day, end_day) in YYYY-mm-dd format.
-        """
-        selected_windows: list[tuple[str, str, str]] = []
-        user_ids = self.get_user_ids()[:num_users]
-
-        for user_id in user_ids:
-            windows_for_user = 0
-            days = self.get_user_days(user_id)
-
-            for start_idx, start_day in enumerate(days):
-                if windows_for_user >= num_windows_per_user:
-                    break
-
-                # Try one- or two-day windows
-                for end_offset in [0, 1]:
-                    if windows_for_user >= num_windows_per_user:
-                        break
-
-                    end_idx = start_idx + end_offset
-                    if end_idx >= len(days):
-                        continue
-
-                    end_day = days[end_idx]
-
-                    try:
-                        window = self.build_validation_window_for_days(
-                            user_id, start_day, end_day
-                        )
-
-                        # Count meals and boluses
-                        num_meals = len(
-                            [x for x in window.carb_replay_events if x[1] > 0]
-                        )
-                        num_boluses = len(
-                            [x for x in window.insulin_reference if x[1] > 0]
-                        )
-
-                        # Accept if criteria met
-                        if num_meals >= 3 and num_boluses >= 2:
-                            selected_windows.append(
-                                (user_id, start_day, end_day)
-                            )
-                            windows_for_user += 1
-
-                    except ValueError:
-                        # Skip invalid windows silently
-                        continue
-
-        return selected_windows
-
-    def print_validation_windows(self) -> None:
-        """Print a list of selected validation windows."""
-        windows = self.get_best_validation_windows()
-        if not windows:
-            print("No suitable validation windows found")
-            return
-
-        print("\n" + "=" * 70)
-        print(f"{'User':>8} | {'Start Day':>12} | {'End Day':>12} | Notes")
-        print("-" * 70)
-
-        for user_id, start_day, end_day in windows:
-            try:
-                window = self.build_validation_window_for_days(
-                    user_id, start_day, end_day
-                )
-                num_meals = len(
-                    [x for x in window.carb_replay_events if x[1] > 0]
-                )
-                num_boluses = len(
-                    [x for x in window.insulin_reference if x[1] > 0]
-                )
-                duration_h = window.duration_minutes / 60.0
-
-                notes = (
-                    f"{num_meals} meals, {num_boluses} boluses, "
-                    f"{duration_h:.1f}h"
-                )
-                print(
-                    f"{user_id:>8} | {start_day:>12} | "
-                    f"{end_day:>12} | {notes}"
-                )
-            except ValueError:
-                pass
-
-        print("=" * 70 + "\n")
-
-    def save_validation_windows_to_file(self, output_path: str | Path) -> None:
-        """Save selected validation windows to a text file.
-
-        Args:
-            output_path: File path where window list will be written.
-        """
-        windows = self.get_best_validation_windows()
-        output_file = Path(output_path)
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-
-        with output_file.open(mode="w", encoding="utf-8") as f:
-            f.write("Phase 1 Validation Windows\n")
-            f.write("=" * 70 + "\n\n")
-
-            for user_id, start_day, end_day in windows:
-                try:
-                    window = self.build_validation_window_for_days(
-                        user_id, start_day, end_day
-                    )
-                    num_meals = len(
-                        [x for x in window.carb_replay_events if x[1] > 0]
-                    )
-                    num_boluses = len(
-                        [x for x in window.insulin_reference if x[1] > 0]
-                    )
-                    duration_h = window.duration_minutes / 60.0
-
-                    f.write(f"User: {user_id}\n")
-                    f.write(
-                        f"Date Range: {start_day} to {end_day} "
-                        f"({duration_h:.1f} hours)\n"
-                    )
-                    f.write(
-                        f"Dynamics: {num_meals} meals, {num_boluses} boluses\n"
-                    )
-                    f.write(
-                        f"Initial glucose: "
-                        f"{window.initial_glucose_mmol_l:.2f} mmol/L\n"
-                    )
-                    f.write("\n")
-
-                except ValueError:
-                    pass

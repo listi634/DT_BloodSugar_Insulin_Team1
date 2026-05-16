@@ -9,8 +9,12 @@ import json
 from pathlib import Path
 import re
 from typing import Any
+from typing import cast
 
 from src.core.benchmark_loader import ValidationWindowData
+from src.core.prediction import PredictionResult
+from src.core.prediction import PredictionScenario
+from src.core.prediction_metrics import PredictionMetrics
 from src.core.state import ModelConfig
 from src.core.state import SimulationSnapshot
 from src.core.state import SimulationState
@@ -81,6 +85,34 @@ class ValidationReplayLogger:
         self._write_json_line(record)
         self._record_count += 1
 
+    def record_prediction(
+        self,
+        start_state: SimulationState,
+        scenario: PredictionScenario,
+        result: PredictionResult,
+        prediction_mode: str,
+        trigger: str,
+        show_metrics: bool,
+        metrics: PredictionMetrics | None = None,
+    ) -> None:
+        """Append one prediction record with inputs, outputs, and metrics."""
+        if self._closed:
+            return
+
+        record = {
+            "type": "prediction",
+            "prediction_index": self._record_count,
+            "prediction_mode": prediction_mode,
+            "trigger": trigger,
+            "show_metrics": show_metrics,
+            "start_state": asdict(start_state),
+            "scenario": asdict(scenario),
+            "result": asdict(result),
+            "metrics": asdict(metrics) if metrics is not None else None,
+        }
+        self._write_json_line(record)
+        self._record_count += 1
+
     def close(self) -> None:
         """Write a footer and close the file handle once."""
         if self._closed:
@@ -99,6 +131,12 @@ class ValidationReplayLogger:
 
     def _build_session_header(self) -> dict[str, Any]:
         """Build the first JSONL line with human-readable context."""
+        controller_config = self.controller_config
+        if controller_config is not None and hasattr(
+            controller_config, "__dataclass_fields__"
+        ):
+            controller_config = asdict(cast(Any, controller_config))
+
         return {
             "type": "session",
             "schema_version": "dt.validation_replay_log.v1",
@@ -124,19 +162,34 @@ class ValidationReplayLogger:
                 ],
             },
             "model_config": asdict(self.model_config),
-            "controller_config": (
-                asdict(self.controller_config)
-                if hasattr(self.controller_config, "__dataclass_fields__")
-                else self.controller_config
-            ),
+            "controller_config": controller_config,
             "initial_state": asdict(self.initial_state),
             "notes": [
                 "Each step record stores the full simulated state snapshot.",
-                "Plasma glucose is the model blood glucose state used by the ODE.",
-                "Interstitium is the CGM-like state assimilated by the replay estimator.",
-                "Measured glucose is the benchmark value used when available.",
-                "mode=replay means the step was part of the validation run.",
-                "mode=prediction means the step came from a temporary what-if overlay.",
+                (
+                    "Plasma glucose is the model blood glucose state used by "
+                    "the ODE."
+                ),
+                (
+                    "Interstitium is the CGM-like state assimilated by the "
+                    "replay estimator."
+                ),
+                (
+                    "Measured glucose is the benchmark value used when "
+                    "available."
+                ),
+                (
+                    "mode=replay means the step was part of the validation "
+                    "run."
+                ),
+                (
+                    "mode=prediction means the step came from a temporary "
+                    "what-if overlay."
+                ),
+                (
+                    "type=prediction stores open-loop forecast inputs, "
+                    "outputs, and optional metrics."
+                ),
             ],
         }
 

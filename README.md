@@ -81,7 +81,7 @@ DT_BloodSugar_Insulin_Team1/
 │   │   └── __init__.py
 │   ├── gui/
 │   │   ├── app.py                   ← Main CustomTkinter application
-│   │   ├── control_panel.py         ← User inputs for meal/sport/actions
+│   │   ├── control_panel.py         ← User inputs for meal/bolus/actions
 │   │   ├── plot_frame.py            ← Embedded Matplotlib live charts
 │   │   └── __init__.py
 │   ├── main.py                      ← Entry point

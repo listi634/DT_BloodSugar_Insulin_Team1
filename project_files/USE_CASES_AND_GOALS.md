@@ -55,8 +55,16 @@ Primary use-cases
      allow the user to continue or launch a short-term prediction.
    - The prediction runs forward without ingesting further benchmark data
      and leaves a background overlay for visual comparison.
+   - After the prediction window completes, show a compact summary with
+     RMSE, MARD, and peak-time error against the reference glucose data.
 
-3. Conservative what-if analysis
+3. Standalone what-if prediction
+   - Let the user run a short open-loop forecast from the current state
+     without requiring a replay meal event.
+   - Accept planned meal carbohydrates and an optional bolus so the user
+     can inspect a conservative future trajectory.
+
+4. Conservative what-if analysis
    - Let the user test small meal or bolus changes and inspect the trend
      direction rather than interpret the output as a clinical dose
      recommendation.
@@ -81,7 +89,8 @@ Data & events
 Acceptance criteria (high-level)
 --------------------------------
 - The project must provide replayed GlucoBench runs and meal-triggered
-  prediction overlays via the GUI and CLI.
+  prediction overlays and a standalone prediction control via the GUI
+  and CLI.
 - Deterministic loop order must be preserved: apply events → controller →
   integrate → save history.
 - The simulator must expose a reproducible example scenario (small CSV

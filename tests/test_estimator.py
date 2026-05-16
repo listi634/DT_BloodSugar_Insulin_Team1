@@ -3,7 +3,6 @@
 import numpy as np
 import pytest
 
-from src.core.estimator import EstimatorTraceStep
 from src.core.estimator import ExtendedKalmanFilterEstimator
 from src.core.model import PhysiologyModel
 from src.core.state import EstimatorConfig
@@ -22,8 +21,6 @@ def _build_estimator() -> ExtendedKalmanFilterEstimator:
         carb_intestine=0.0,
         interstitium=7.0,
         insulin_rate=0.0,
-        sport_multiplier=1.0,
-        sport_minutes_remaining=0.0,
     )
     return ExtendedKalmanFilterEstimator(
         model=PhysiologyModel(),
@@ -84,8 +81,6 @@ def test_insulin_process_noise_can_be_overridden() -> None:
         carb_intestine=0.0,
         interstitium=7.0,
         insulin_rate=0.0,
-        sport_multiplier=1.0,
-        sport_minutes_remaining=0.0,
     )
     estimator = ExtendedKalmanFilterEstimator(
         model=PhysiologyModel(),
@@ -102,34 +97,3 @@ def test_insulin_process_noise_can_be_overridden() -> None:
 
     covariance = estimator.covariance
     assert covariance[1, 1] > covariance[0, 0]
-
-
-def test_rts_smoother_returns_smoothed_sequence() -> None:
-    """RTS smoother should return a state sequence aligned to the trace."""
-    estimator = _build_estimator()
-    steps: list[EstimatorTraceStep] = []
-
-    for _ in range(3):
-        predicted_state, transition, predicted_covariance = (
-            estimator.predict_with_details(
-                dt_minutes=1.0,
-                control_input=0.0,
-            )
-        )
-        updated_state = estimator.update(
-            measured_interstitium=predicted_state.interstitium
-        )
-        steps.append(
-            EstimatorTraceStep(
-                predicted_state=predicted_state,
-                predicted_covariance=predicted_covariance,
-                updated_state=updated_state,
-                updated_covariance=estimator.covariance,
-                transition=transition,
-            )
-        )
-
-    smoothed = ExtendedKalmanFilterEstimator.rts_smooth(steps)
-
-    assert len(smoothed) == len(steps)
-    assert smoothed[-1] == steps[-1].updated_state

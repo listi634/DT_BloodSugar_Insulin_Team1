@@ -36,7 +36,7 @@ function Run-Check {
     Write-Host ""
     
     try {
-        & $Command[0] $Command[1..($Command.Length-1)] | Tee-Object -Variable output
+        & $Command[0] $Command[1..($Command.Length-1)]
         if ($LASTEXITCODE -eq 0) {
             Write-Host "[OK] $Tool completed successfully"
             return $true
@@ -57,7 +57,7 @@ Write-Host ""
 Write-Host ("=" * 70)
 $script:results["Black"] = Run-Check `
     "Black" `
-    @("black", $Target, "--line-length=79") `
+    @("pipenv", "run", "black", $Target, "--line-length=79") `
     "1. AUTO-FORMATTING WITH BLACK"
 
 # Step 2: Pylint
@@ -65,7 +65,7 @@ Write-Host ""
 Write-Host ("=" * 70)
 $script:results["Pylint"] = Run-Check `
     "Pylint" `
-    @("pylint", $Target, "--rcfile=.pylintrc") `
+    @("pipenv", "run", "pylint", $Target, "--rcfile=.pylintrc") `
     "2. LINTING WITH PYLINT"
 
 # Step 3: mypy
@@ -73,7 +73,7 @@ Write-Host ""
 Write-Host ("=" * 70)
 $script:results["mypy"] = Run-Check `
     "mypy" `
-    @("mypy", $Target, "--strict") `
+    @("pipenv", "run", "mypy", $Target, "--strict") `
     "3. TYPE CHECKING WITH MYPY"
 
 # Step 4: Use-case document presence
@@ -95,7 +95,7 @@ if (Test-Path "tests") {
     Write-Host ("=" * 70)
     $script:results["Tests"] = Run-Check `
         "pytest" `
-        @("pytest", "tests/", "-v", "--tb=short") `
+        @("pipenv", "run", "python", "-m", "pytest", "tests/", "-v", "--tb=short") `
         "4. RUNNING TESTS"
 } else {
     Write-Host ""

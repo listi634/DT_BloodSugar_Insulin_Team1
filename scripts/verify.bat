@@ -26,9 +26,9 @@ echo.
 echo ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 echo [STEP 1] AUTO-FORMATTING WITH BLACK
 echo ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-echo Running: black %TARGET% --line-length=79
+echo Running: pipenv run black %TARGET% --line-length=79
 echo.
-call black "%TARGET%" --line-length=79
+call pipenv run black "%TARGET%" --line-length=79
 if %errorlevel% equ 0 (
     echo. [OK] Black formatting completed
     set BLACK_PASS=1
@@ -42,9 +42,9 @@ echo.
 echo ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 echo [STEP 2] LINTING WITH PYLINT
 echo ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-echo Running: pylint %TARGET% --rcfile=.pylintrc
+echo Running: pipenv run pylint %TARGET% --rcfile=.pylintrc
 echo.
-call pylint "%TARGET%" --rcfile=.pylintrc
+call pipenv run pylint "%TARGET%" --rcfile=.pylintrc
 if %errorlevel% equ 0 (
     echo. [OK] Pylint check passed
     set PYLINT_PASS=1
@@ -58,9 +58,9 @@ echo.
 echo ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 echo [STEP 3] TYPE CHECKING WITH MYPY
 echo ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-echo Running: mypy %TARGET% --strict
+echo Running: pipenv run mypy %TARGET% --strict
 echo.
-call mypy "%TARGET%" --strict
+call pipenv run mypy "%TARGET%" --strict
 if %errorlevel% equ 0 (
     echo. [OK] mypy type checking passed
     set MYPY_PASS=1
@@ -88,9 +88,9 @@ if exist tests (
     echo ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     echo [STEP 4] RUNNING TESTS
     echo ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    echo Running: pytest tests/ -v --tb=short
+    echo Running: pipenv run python -m pytest tests/ -v --tb=short
     echo.
-    call pytest tests/ -v --tb=short
+    call pipenv run python -m pytest tests/ -v --tb=short
     if %errorlevel% equ 0 (
         echo. [OK] All tests passed
         set PYTEST_PASS=1

@@ -27,10 +27,10 @@ class ModelConfig:
     interstitium_tau_minutes: float = 8.0
     insulin_subq_fraction: float = 1.0
     insulin_subq_absorption_tau_minutes: float = 30.0
-    min_glucose: float = 2.0
+    min_glucose: float = 1.0
     max_glucose: float = 20.0
     min_insulin: float = 0.0
-    max_insulin: float = 200.0
+    max_insulin: float = 300.0
 
     def validate(self) -> None:
         """Validate model parameters for physically meaningful values."""
@@ -142,21 +142,6 @@ class IntegratorConfig:
 
 
 @dataclass(frozen=True)
-class SportEvent:
-    """Temporary insulin sensitivity boost request."""
-
-    multiplier: float
-    duration_minutes: float
-
-    def validate(self) -> None:
-        """Validate sport event values."""
-        if self.multiplier < 1.0:
-            raise ValueError("sport multiplier must be at least 1.0")
-        if self.duration_minutes <= 0.0:
-            raise ValueError("sport duration must be positive")
-
-
-@dataclass(frozen=True)
 class BolusEvent:
     """Discrete or short infusion insulin administration request.
 
@@ -183,13 +168,11 @@ class PendingEvents:
     """Buffered user events to apply at the next simulation step."""
 
     meal_carbs: float = 0.0
-    sport_event: SportEvent | None = None
     bolus_event: BolusEvent | None = None
 
     def clear(self) -> None:
         """Clear all pending inputs after event application."""
         self.meal_carbs = 0.0
-        self.sport_event = None
         self.bolus_event = None
 
 
@@ -204,8 +187,6 @@ class SimulationState:
     carb_intestine: float
     interstitium: float
     insulin_rate: float
-    sport_multiplier: float
-    sport_minutes_remaining: float
     insulin_subcutaneous: float = 0.0
     insulin_subq_rate: float = 0.0
     insulin_subq_minutes_remaining: float = 0.0
@@ -223,8 +204,6 @@ class SimulationSnapshot:
     carb_intestine: float
     interstitium: float
     insulin_rate: float
-    sport_multiplier: float
-    sport_minutes_remaining: float
     insulin_subcutaneous: float = 0.0
     insulin_subq_rate: float = 0.0
     insulin_subq_minutes_remaining: float = 0.0

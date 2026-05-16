@@ -7,7 +7,6 @@ import numpy as np
 
 from src.core.controller import ProportionalController
 from src.core.model import PhysiologyModel
-from src.core.estimator import EstimatorTraceStep
 from src.core.estimator import ExtendedKalmanFilterEstimator
 from src.core.state import ControllerConfig
 from src.core.state import EstimatorConfig
@@ -17,7 +16,6 @@ from src.core.state import PendingEvents
 from src.core.state import SimulationSnapshot
 from src.core.state import SimulationState
 from src.core.state import BolusEvent
-from src.core.state import SportEvent
 
 
 class GlucoseSimulator:
@@ -63,7 +61,6 @@ class GlucoseSimulator:
         self._history: list[SimulationSnapshot] = [
             self._to_snapshot(self._state)
         ]
-        self._estimator_trace: list[EstimatorTraceStep] = []
 
     @property
     def current_state(self) -> SimulationState:
@@ -79,10 +76,6 @@ class GlucoseSimulator:
     def history(self) -> list[SimulationSnapshot]:
         """Simulation history as immutable snapshots."""
         return list(self._history)
-
-    def get_estimator_trace(self) -> list[EstimatorTraceStep]:
-        """Return recorded EKF prediction/update trace steps."""
-        return list(self._estimator_trace)
 
     def export_snapshot(
         self,
@@ -110,7 +103,6 @@ class GlucoseSimulator:
         self._estimator.set_covariance(snapshot.estimator_covariance)
         self._pending.clear()
         self._history = list(snapshot.history)
-        self._estimator_trace = []
 
     def queue_meal(self, carbs: float) -> None:
         """Queue meal carbohydrates to be applied at next step.
@@ -152,20 +144,9 @@ class GlucoseSimulator:
             raise ValueError("units_per_hour must be non-negative")
 
         concentration_rate = (
-            units_per_hour
-            * self._model_config.unit_to_uu_per_ml
-            / 60.0
+            units_per_hour * self._model_config.unit_to_uu_per_ml / 60.0
         )
         self._state.basal_insulin_rate = concentration_rate
-
-    def queue_sport(self, multiplier: float, duration_minutes: float) -> None:
-        """Queue a temporary insulin-sensitivity boost event."""
-        sport_event = SportEvent(
-            multiplier=multiplier,
-            duration_minutes=duration_minutes,
-        )
-        sport_event.validate()
-        self._pending.sport_event = sport_event
 
     def reset(self) -> None:
         """Reset to initial state and clear pending events/history."""
@@ -173,7 +154,6 @@ class GlucoseSimulator:
         self._estimator.set_state(self._state)
         self._pending.clear()
         self._history = [self._to_snapshot(self._state)]
-        self._estimator_trace = []
 
     def step(
         self,
@@ -212,19 +192,14 @@ class GlucoseSimulator:
         """Execute one deterministic step of the simulation pipeline."""
         self._apply_pending_events()
         self._estimator.set_state(self._state)
-        predicted_state, transition, predicted_covariance = (
-            self._estimator.predict_with_details(
-                dt_minutes=self._model_config.dt_minutes,
-                control_input=self._state.insulin_rate,
-            )
+        self._estimator.predict(
+            dt_minutes=self._model_config.dt_minutes,
+            control_input=self._state.insulin_rate,
         )
         if assimilate_measurement:
             if measured_interstitium is None:
                 measured_interstitium = self._state.interstitium
-            updated_state = self._estimator.update(measured_interstitium)
-        else:
-            updated_state = predicted_state
-        updated_covariance = self._estimator.covariance
+            self._estimator.update(measured_interstitium)
 
         estimate = self._estimator.current_state
         if use_controller:
@@ -236,16 +211,6 @@ class GlucoseSimulator:
         # Merge estimator state but preserve any insulin_rate set by controller
         self._state = replace(estimate, insulin_rate=self._state.insulin_rate)
         self._estimator.set_state(self._state)
-
-        self._estimator_trace.append(
-            EstimatorTraceStep(
-                predicted_state=predicted_state,
-                predicted_covariance=predicted_covariance,
-                updated_state=updated_state,
-                updated_covariance=updated_covariance,
-                transition=transition,
-            )
-        )
 
         snapshot = self._to_snapshot(self._state)
         self._history.append(snapshot)
@@ -266,14 +231,6 @@ class GlucoseSimulator:
         if self._pending.meal_carbs > 0.0:
             self._state.carb_stomach += self._pending.meal_carbs
 
-        if self._pending.sport_event is not None:
-            sport_event = self._pending.sport_event
-            self._state.sport_multiplier = max(
-                self._state.sport_multiplier,
-                sport_event.multiplier,
-            )
-            self._state.sport_minutes_remaining += sport_event.duration_minutes
-
         if self._pending.bolus_event is not None:
             bolus = self._pending.bolus_event
             unit_to_concentration = self._model_config.unit_to_uu_per_ml
@@ -288,11 +245,7 @@ class GlucoseSimulator:
                 # Short infusion: convert units over minutes to per-minute
                 # input and keep a finite remaining duration so the rate
                 # expires when the requested window ends.
-                rate = (
-                    bolus.units
-                    * unit_to_concentration
-                    / bolus.over_minutes
-                )
+                rate = bolus.units * unit_to_concentration / bolus.over_minutes
                 self._state.insulin_subq_rate += rate
                 self._state.insulin_subq_minutes_remaining = max(
                     self._state.insulin_subq_minutes_remaining,
@@ -306,7 +259,10 @@ class GlucoseSimulator:
         if getattr(self._state, "insulin_subq_rate", 0.0) > 0.0:
             transfer = self._state.insulin_subq_rate * dt
             self._state.insulin_subcutaneous += transfer
-            if getattr(self._state, "insulin_subq_minutes_remaining", 0.0) > 0.0:
+            if (
+                getattr(self._state, "insulin_subq_minutes_remaining", 0.0)
+                > 0.0
+            ):
                 self._state.insulin_subq_minutes_remaining = max(
                     0.0, self._state.insulin_subq_minutes_remaining - dt
                 )
@@ -332,8 +288,6 @@ class GlucoseSimulator:
             interstitium=state.interstitium,
             insulin_rate=state.insulin_rate,
             basal_insulin_rate=getattr(state, "basal_insulin_rate", 0.0),
-            sport_multiplier=state.sport_multiplier,
-            sport_minutes_remaining=state.sport_minutes_remaining,
         )
 
 
