@@ -6,7 +6,7 @@ from tkinter import TclError
 import customtkinter as ctk
 
 
-class ControlPanel(ctk.CTkFrame):
+class ControlPanel(ctk.CTkScrollableFrame):
     """Input controls for simulator runtime and GlucoBench workflow."""
 
     def __init__(
@@ -50,8 +50,8 @@ class ControlPanel(ctk.CTkFrame):
             command=self._on_toggle_run,
             fg_color="#1F7A1F",
             hover_color="#155B15",
-            font=ctk.CTkFont(weight="bold", size=15),
-            height=42,
+            font=ctk.CTkFont(weight="bold", size=14),
+            height=38,
         )
         self.run_button.grid(
             row=0, column=0, sticky="ew", padx=12, pady=(12, 8)

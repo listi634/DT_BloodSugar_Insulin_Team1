@@ -2,9 +2,11 @@
 
 # pylint: skip-file
 
+import ctypes
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
+import sys
 from typing import cast
 from tkinter import TclError
 
@@ -29,6 +31,9 @@ from src.core.utilities import collect_due_carb_events
 from src.core.utilities import collect_due_insulin_events
 from src.gui.control_panel import ControlPanel
 from src.gui.plot_frame import PlotFrame
+
+UI_WIDGET_SCALE = 0.92
+UI_WINDOW_SCALE = 0.94
 
 
 @dataclass
@@ -140,10 +145,11 @@ class DigitalTwinApp(ctk.CTk):
 
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("green")
+        ctk.set_widget_scaling(UI_WIDGET_SCALE)
+        ctk.set_window_scaling(UI_WINDOW_SCALE)
 
         self.title("Digital Twin: Glucose-Insulin V1")
-        self.geometry("1200x760")
-        self.minsize(980, 640)
+        self._configure_window_geometry()
 
         self.grid_columnconfigure(0, weight=0)
         self.grid_columnconfigure(1, weight=1)
@@ -204,9 +210,50 @@ class DigitalTwinApp(ctk.CTk):
             row=2, column=0, sticky="ew", padx=10, pady=(0, 8)
         )
 
+        self._startup_maximize_requested = False
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.bind("<Map>", self._on_window_mapped, add="+")
+        self.after(500, self._maximize_window)
         if self._setup_validation_data():
             self._on_validation_preload()
+
+    def _configure_window_geometry(self) -> None:
+        """Size the main window relative to the current display."""
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+
+        width = screen_width
+        height = screen_height
+        min_width = min(980, int(screen_width * 0.75))
+        min_height = min(640, int(screen_height * 0.75))
+
+        self.geometry(f"{width}x{height}+0+0")
+        self.minsize(min_width, min_height)
+
+    def _maximize_window(self) -> None:
+        """Maximize the window once it has been mapped."""
+        if sys.platform.startswith("win"):
+            try:
+                self.update_idletasks()
+                ctypes.windll.user32.ShowWindow(self.winfo_id(), 3)
+                ctypes.windll.user32.SetForegroundWindow(self.winfo_id())
+                return
+            except (AttributeError, TclError, OSError):
+                pass
+        try:
+            self.state("zoomed")
+        except TclError:
+            try:
+                self.attributes("-zoomed", True)
+            except TclError:
+                pass
+
+    def _on_window_mapped(self, _: object | None = None) -> None:
+        """Request maximize after the window becomes visible."""
+        if self._startup_maximize_requested:
+            return
+        self._startup_maximize_requested = True
+        self.after(50, self._maximize_window)
 
     def _toggle_run(self) -> None:
         """Toggle run/pause state for non-blocking simulation loop."""

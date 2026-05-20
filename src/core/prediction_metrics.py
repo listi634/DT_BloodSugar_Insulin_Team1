@@ -111,8 +111,9 @@ def compute_prediction_metrics(
 
 def format_prediction_metrics(metrics: PredictionMetrics) -> str:
     """Format metrics for display under the glucose plot."""
+    # Single-line summary for compact display in the UI
     return (
-        f"RMSE: {metrics.rmse:.2f} mmol/L\n"
-        f"MARD: {metrics.mard_percent:.1f}%\n"
+        f"RMSE: {metrics.rmse:.2f} mmol/L | "
+        f"MARD: {metrics.mard_percent:.1f}% | "
         f"Peak Time Error: {metrics.peak_time_error_minutes:+.0f} min"
     )

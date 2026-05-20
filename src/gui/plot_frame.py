@@ -32,7 +32,7 @@ class PlotFrame(ctk.CTkFrame):
         """Create chart widgets and visual style."""
         super().__init__(master)
 
-        self.figure = Figure(figsize=(8.0, 5.2), dpi=100)
+        self.figure = Figure(figsize=(7.4, 4.8), dpi=100)
         self._layout = self.figure.add_gridspec(
             3,
             1,
@@ -52,13 +52,13 @@ class PlotFrame(ctk.CTkFrame):
 
         self.ax_glucose.set_title(
             "Glucose",
-            fontsize=22,
+            fontsize=20,
             fontweight="bold",
             pad=12,
         )
         self.ax_insulin.set_title(
             "Insulin",
-            fontsize=22,
+            fontsize=20,
             fontweight="bold",
             pad=12,
         )
@@ -183,7 +183,7 @@ class PlotFrame(ctk.CTkFrame):
             "Prediction Metrics",
             ha="center",
             va="center",
-            fontsize=12.0,
+            fontsize=11.0,
             fontweight="bold",
             color="#1F2937",
             zorder=21,
@@ -196,7 +196,7 @@ class PlotFrame(ctk.CTkFrame):
             "",
             ha="center",
             va="center",
-            fontsize=10.8,
+            fontsize=10.0,
             fontfamily="DejaVu Sans Mono",
             color="#293241",
             linespacing=1.0,
